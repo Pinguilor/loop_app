@@ -200,10 +200,10 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                             <div className=" group-hover:scale-105 transition-all duration-300">
                                 <Image
                                     src="/looplogo.png"
-                                    alt="Logo Loop Nvabar"
+                                    alt="Logo Loop"
                                     width={1140}
                                     height={46}
-                                    className="w-auto h-12 sm:h-12 object-contain drop-shadow-sm"
+                                    className="w-auto max-w-[140px] sm:max-w-[180px] h-10 sm:h-12 object-contain drop-shadow-sm"
                                     priority
                                 />
                             </div>

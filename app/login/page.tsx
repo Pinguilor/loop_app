@@ -19,8 +19,8 @@ export default function LoginPage() {
                     <div className="flex-1 flex items-center justify-center relative z-10 w-full">
                         <div className="hover:scale-110 transition-transform duration-500">
                             <Image
-                                src="/LoopLogo2.png"
-                                alt="Logo Loop"
+                                src="/looplogo2.png"
+                                alt="Logo Loop Login"
                                 width={450}
                                 height={150}
                                 className="w-auto h-44 object-contain drop-shadow-md"

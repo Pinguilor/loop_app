@@ -199,8 +199,8 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                             {/* Contenedor blanco semitransparente para dar contraste al logo */}
                             <div className=" group-hover:scale-105 transition-all duration-300">
                                 <Image
-                                    src="/looplogo2.png"
-                                    alt="Logo Loop"
+                                    src="/looplogo.png"
+                                    alt="Logo Loop Nvabar"
                                     width={1140}
                                     height={46}
                                     className="w-auto h-12 sm:h-12 object-contain drop-shadow-sm"

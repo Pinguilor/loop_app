@@ -199,7 +199,7 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                             {/* Contenedor blanco semitransparente para dar contraste al logo */}
                             <div className=" group-hover:scale-105 transition-all duration-300">
                                 <Image
-                                    src="/LoopLogo.png"
+                                    src="/looplogo2.png"
                                     alt="Logo Loop"
                                     width={1140}
                                     height={46}

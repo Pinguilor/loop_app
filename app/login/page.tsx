@@ -23,7 +23,7 @@ export default function LoginPage() {
                                 alt="Logo Loop Login"
                                 width={450}
                                 height={150}
-                                className="w-auto h-44 object-contain drop-shadow-md"
+                                className="w-24 sm:w-40 h-auto mb-4 sm:mb-8 object-contain drop-shadow-md"
                                 priority
                             />
                         </div>

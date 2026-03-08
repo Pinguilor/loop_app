@@ -1,0 +1,186 @@
+'use server';
+
+import { createClient } from '@/lib/supabase/server';
+import { revalidatePath } from 'next/cache';
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_TYPES = [
+    'application/pdf',
+    'image/jpeg',
+    'image/png',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+const BUCKET_NAME = 'ticket-attachments';
+
+export async function createTicketAction(formData: FormData) {
+    const supabase = await createClient();
+
+    // 1. Authenticate user
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return { error: 'No estás autenticado.' };
+    }
+
+    // 2. Extract and validate textual data
+    const titulo = formData.get('titulo') as string;
+    const descripcion = formData.get('descripcion') as string;
+    const prioridad = formData.get('prioridad') as 'baja' | 'media' | 'alta' | 'crítica';
+    const restaurante_id = formData.get('restaurante_id') as string;
+    const catalogo_servicio_id = formData.get('catalogo_servicio_id') as string;
+    const zona_id = formData.get('zona_id') as string | null;
+
+    const adjuntos = formData.getAll('adjuntos') as File[];
+
+    if (!titulo || !descripcion || !prioridad || !restaurante_id || !catalogo_servicio_id) {
+        return { error: 'Por favor completa todos los campos requeridos, incluyendo la categoría principal.' };
+    }
+
+    // Validate that catalog exists
+    const { data: catExists } = await supabase.from('catalogo_servicios').select('id').eq('id', catalogo_servicio_id).single();
+    if (!catExists) return { error: 'La categoría seleccionada no existe o no es válida.' };
+
+    // Zone validation is optional now
+    if (zona_id) {
+        const { data: zonaExists } = await supabase.from('zonas').select('id').eq('id', zona_id).single();
+        if (!zonaExists) return { error: 'La zona seleccionada no existe o no es válida.' };
+    }
+
+    if (adjuntos.length > 5) {
+        return { error: 'Puedes subir un máximo de 5 adjuntos.' };
+    }
+
+    // Generate unique ticket uuid early so we can upload files to its specific folder
+    const ticketId = crypto.randomUUID();
+    const fileUrls: string[] = [];
+
+    // 3. Process and upload files to Supabase Storage
+    for (const file of adjuntos) {
+        // Validate on the server as well
+        if (file.size > MAX_FILE_SIZE) {
+            return { error: `El archivo ${file.name} supera el límite de 5MB.` };
+        }
+        if (!ALLOWED_TYPES.includes(file.type)) {
+            return { error: `El archivo ${file.name} tiene un tipo no permitido.` };
+        }
+
+        // Sanitize filename to prevent issues
+        const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '');
+        const timestamp = Date.now();
+        const filePath = `${ticketId}/${timestamp}_${sanitizedFileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from(BUCKET_NAME)
+            .upload(filePath, file);
+
+        if (uploadError) {
+            console.error('Storage upload error:', uploadError);
+            return { error: `Error subiendo ${file.name}: ${uploadError.message}` };
+        }
+
+        // Get public URL
+        const { data: { publicUrl } } = supabase.storage
+            .from(BUCKET_NAME)
+            .getPublicUrl(filePath);
+
+        fileUrls.push(publicUrl);
+    }
+
+    const getSLAHours = (p: string) => {
+        switch (p) {
+            case 'crítica': return 4;
+            case 'alta': return 24;
+            case 'media': return 48;
+            case 'baja': return 72;
+            default: return 72;
+        }
+    };
+    const vencimiento_sla = new Date(Date.now() + getSLAHours(prioridad) * 60 * 60 * 1000).toISOString();
+
+    // 4. Insert database record (tickets table)
+    const { error: insertError } = await supabase
+        .from('tickets')
+        .insert({
+            id: ticketId,
+            titulo,
+            descripcion,
+            prioridad,
+            restaurante_id,
+            catalogo_servicio_id,
+            zona_id: zona_id || null,
+
+            estado: 'esperando_agente', // Setting correct status as defined earlier
+            creado_por: user.id, // Maps to user's profile ID
+            adjuntos: fileUrls.length > 0 ? fileUrls : null,
+            vencimiento_sla,
+        });
+
+    if (insertError) {
+        console.error('Database insert error:', insertError);
+        return { error: `Error creando ticket: ${insertError.message}` };
+    }
+
+    // --- NOTIFY ALL AGENTS ---
+    const { data: newTicket } = await supabase.from('tickets').select('numero_ticket').eq('id', ticketId).single();
+    if (newTicket) {
+        const { data: agents } = await supabase.from('profiles').select('id').eq('role', 'AGENTE');
+        if (agents && agents.length > 0) {
+            const notifications = agents.map(agent => ({
+                user_id: agent.id,
+                ticket_id: ticketId,
+                mensaje: `Nueva solicitud ingresada: NC-${newTicket.numero_ticket}`,
+                leida: false
+            }));
+            await supabase.from('notifications').insert(notifications);
+        }
+    }
+    // -------------------------
+
+    // Revalidate dashboard so the new ticket appears in the list
+    revalidatePath(`/dashboard/ticket/${ticketId}`);
+    revalidatePath('/dashboard/solicitante');
+    return { success: true, id: ticketId };
+}
+export async function scheduleVisitAction(ticketId: string, visitDate: string, noteContent: string) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+        return { error: 'No autorizado' };
+    }
+
+    // 1. Update the ticket status and date
+    const { error: ticketError } = await supabase
+        .from('tickets')
+        .update({
+            estado: 'programado',
+            fecha_programada: visitDate,
+            actualizado_en: new Date().toISOString()
+        })
+        .eq('id', ticketId);
+
+    if (ticketError) {
+        console.error('Error actualizando ticket:', ticketError);
+        return { error: 'No se pudo actualizar el estado del ticket.' };
+    }
+
+    // 2. Insert the system message into the timeline with the "tipo_evento" label
+    const { error: msgError } = await supabase
+        .from('ticket_messages')
+        .insert({
+            ticket_id: ticketId,
+            sender_id: user.id,
+            mensaje: noteContent || 'El agente ha programado una visita técnica.',
+            es_sistema: false, // Lo dejamos en false para que tu diseño azul lo tome
+            tipo_evento: 'visita_programada' // <--- ESTA ES LA MAGIA
+        });
+
+    if (msgError) {
+        console.error('Error insertando mensaje de visita:', msgError);
+        return { error: 'Se programó la visita pero falló el registro en el historial.' };
+    }
+
+    revalidatePath(`/dashboard/ticket/${ticketId}`);
+    return { success: true };
+}

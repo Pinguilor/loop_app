@@ -32,8 +32,8 @@ export default function LoginPage() {
                     {/* RECUADRO 2: Bienvenido */}
                     {/* 👇 FIX: mt-4 en celular para que esté pegadito al logo, mt-auto en PC para que baje. Centrado en celular, a la izquierda en PC */}
                     <div className="relative z-10 mt-2 md:mt-auto text-center md:text-left">
-                        <h1 className="text-sm font-semibold text-slate-500 tracking-wide uppercase opacity-70">
-                            Bienvenido
+                        <h1 className="hidden sm:block text-sm font-semibold text-slate-500 tracking-wide uppercase opacity-70">
+                            Bienvenidos
                         </h1>
                     </div>
                 </div>

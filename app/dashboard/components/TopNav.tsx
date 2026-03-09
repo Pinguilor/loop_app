@@ -175,11 +175,12 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
 
     return (
         <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-brand-secondary to-brand-primary shadow-sm transition-all">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            {/* Contenedor relativo para poder clavar el logo en el centro absoluto */}
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                 <div className="flex justify-between items-center h-16">
 
-                    {/* IZQUIERDA: Logo */}
-                    <div className="flex items-center flex-shrink-0">
+                    {/* IZQUIERDA: Logo (Oculto en móvil si es agente) */}
+                    <div className={`flex items-center flex-shrink-0 ${userRole === 'AGENTE' ? 'hidden md:flex' : 'flex'}`}>
                         <Link href={dashboardLink} className="flex items-center group">
                             <div className="group-hover:scale-105 transition-all duration-300">
                                 <Image
@@ -194,7 +195,23 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                         </Link>
                     </div>
 
-                    {/* CENTRO: Búsqueda (PC) o Botón Crear (Móvil) */}
+                    {/* LOGO CENTRADO ABSOLUTO: La magia para el Agente en Móvil */}
+                    {userRole === 'AGENTE' && (
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 md:hidden pointer-events-auto">
+                            <Link href={dashboardLink} className="flex items-center">
+                                <Image
+                                    src="/looplogo.png"
+                                    alt="Logo Loop"
+                                    width={130}
+                                    height={45}
+                                    className="w-auto h-10 object-contain drop-shadow-sm"
+                                    priority
+                                />
+                            </Link>
+                        </div>
+                    )}
+
+                    {/* CENTRO: Búsqueda (PC) o Botón Crear (Móvil Solicitante) */}
                     <div className="flex-1 flex justify-center items-center px-4">
 
                         {/* BARRA DE BÚSQUEDA: Visible solo en PC (md:block) */}
@@ -267,8 +284,6 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                             </button>
                         )}
 
-                        {/* Botones de Navegación Rápida (Analíticas y Dashboard) */}
-                        {/* NOTA: Estos iconos se Ocultan en móvil (hidden sm:flex) como lo habíamos pedido antes */}
                         <Link
                             href="/dashboard/analiticas"
                             className={`hidden sm:flex p-2 rounded-full transition-colors items-center justify-center cursor-pointer ml-1 ${pathname === '/dashboard/analiticas' ? 'bg-white/20 text-white shadow-inner' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
@@ -297,7 +312,7 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                 )}
                             </button>
 
-                            {/* Dropdown de Notificaciones Rediseñado */}
+                            {/* Dropdown de Notificaciones */}
                             {isNotifOpen && (
                                 <div className="absolute right-0 mt-3 w-[280px] sm:w-80 rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 py-2 z-50 origin-top-right overflow-hidden">
                                     <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">

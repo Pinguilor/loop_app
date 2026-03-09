@@ -1,36 +1,37 @@
 import { LoginForm } from './LoginForm'
-import Image from 'next/image' // ¡Añadimos la importación de Image!
+import Image from 'next/image'
 
 export default function LoginPage() {
     return (
         <div className="min-h-screen bg-cover bg-center flex items-center justify-center p-4 relative overflow-hidden" style={{ backgroundImage: "url('/login-bg-ai.png')" }}>
-            {/* Subtle dark overlay for legibility of the background - lightened to 30% */}
+            {/* Subtle dark overlay */}
             <div className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm z-0"></div>
 
             <div className="relative z-10 w-full max-w-4xl bg-slate-50/95 backdrop-blur-xl rounded-2xl shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px] border border-white/40">
 
-                {/* Left Side */}
-                {/* Panel alineado con el contenedor principal, sin fondo propio para transparencia uniforme */}
-                <div className="md:w-1/2 p-10 flex flex-col relative min-h-[500px]">
-                    {/* Capa de luz sutil para dar elegancia */}
+                {/* Left Side (Logo & Bienvenido) */}
+                {/* 👇 FIX: Quitamos el min-h-[500px] fijo y lo dejamos solo para PC (md:min-h-[500px]). Redujimos el padding en celular (p-6) */}
+                <div className="w-full md:w-1/2 p-6 md:p-10 flex flex-col relative md:min-h-[500px]">
+                    {/* Capa de luz sutil */}
                     <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-30 pointer-events-none"></div>
 
-                    {/* RECUADRO 1: Logo (Centrado perfectamente) */}
-                    <div className="flex-1 flex items-center justify-center relative z-10 w-full">
+                    {/* RECUADRO 1: Logo */}
+                    <div className="flex-1 flex items-center justify-center relative z-10 w-full py-4 md:py-0">
                         <div className="hover:scale-110 transition-transform duration-500">
                             <Image
                                 src="/looplogo-login.png"
                                 alt="Logo Loop Login"
                                 width={450}
                                 height={150}
-                                className="w-24 sm:w-40 h-auto mb-4 sm:mb-8 object-contain drop-shadow-md"
+                                className="w-40 md:w-80 h-auto object-contain drop-shadow-md"
                                 priority
                             />
                         </div>
                     </div>
 
-                    {/* RECUADRO 2: Bienvenido (Abajo a la izquierda) */}
-                    <div className="relative z-10 mt-auto">
+                    {/* RECUADRO 2: Bienvenido */}
+                    {/* 👇 FIX: mt-4 en celular para que esté pegadito al logo, mt-auto en PC para que baje. Centrado en celular, a la izquierda en PC */}
+                    <div className="relative z-10 mt-2 md:mt-auto text-center md:text-left">
                         <h1 className="text-sm font-semibold text-slate-500 tracking-wide uppercase opacity-70">
                             Bienvenido
                         </h1>

@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction } from '../actions';
-import { Send, User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, CornerUpLeft, MessageSquare, ChevronsRight, Calendar } from 'lucide-react';
-import { TicketMessage } from '@/types/database.types';
+import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import 'react-quill-new/dist/quill.snow.css';
 
@@ -20,12 +19,12 @@ const timeAgo = (dateStr: string) => {
 
     if (absDiff < 60) return rtf.format(Math.round(diff), 'second');
     if (absDiff < 3600) return rtf.format(Math.round(diff / 60), 'minute');
-    if (absDiff < 86400) return rtf.format(Math.round(diff / 3600), 'hour');
+    if (absDiff < 8400) return rtf.format(Math.round(diff / 3600), 'hour');
     return rtf.format(Math.round(diff / 86400), 'day');
 };
 
 interface Props {
-    ticket: any; // We are passing down the joined ticket object
+    ticket: any;
     messages: any[];
     currentUserId: string;
     isAgent?: boolean;
@@ -43,7 +42,6 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
     const [copied, setCopied] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Resolution Modal States
     const [showRejectModal, setShowRejectModal] = useState(false);
     const [showApproveModal, setShowApproveModal] = useState(false);
     const [rejectReason, setRejectReason] = useState('');
@@ -140,98 +138,81 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
     return (
         <div className="bg-white rounded-2xl shadow-md border border-slate-300 flex flex-col mb-8 overflow-hidden">
-
             <div className="flex-1 flex flex-col">
-                {/* Thread Header (Original Ticket Context) */}
-                <div className="p-6 border-b border-gray-100 bg-white shrink-0">
-                    <div className="flex justify-between items-start gap-4 mb-4">
-                        <div className="flex items-start gap-3">
-                            <div className="h-10 w-10 mt-1 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shrink-0">
-                                {ticket.profiles?.full_name?.charAt(0).toUpperCase() || <UserIcon className="w-5 h-5" />}
-                            </div>
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900">{ticket.titulo}</h2>
-                                <p className="text-sm text-gray-500 font-medium">
-                                    Creado por {ticket.profiles?.full_name} &bull; {new Date(ticket.fecha_creacion).toLocaleDateString()}
-                                </p>
 
-                                {ticket.restaurantes && (
-                                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#5C7AA3] text-white text-[11px] font-semibold tracking-wide flex-shrink-0">
-                                            <span>{ticket.restaurantes.nombre_restaurante}</span>
-                                            {ticket.catalogo_servicios && (
-                                                <>
-                                                    <ChevronsRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                                    <span className="text-slate-200 font-normal">{ticket.catalogo_servicios.categoria}</span>
-                                                    <ChevronsRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                                    <span className="text-slate-200 font-normal">{ticket.catalogo_servicios.subcategoria}</span>
-                                                    <ChevronsRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
-                                                    <span className="text-white font-medium">{ticket.catalogo_servicios.elemento}</span>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
+                {/* HEADER OPTIMIZADO PARA MÓVIL Y DESCRIPCIÓN */}
+                <div className="p-4 sm:p-6 border-b border-gray-100 bg-white">
+                    <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-5">
+                        <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0 shadow-sm border border-indigo-200">
+                                {ticket.profiles?.full_name?.charAt(0).toUpperCase() || <UserIcon className="w-6 h-6" />}
+                            </div>
+                            <div className="min-w-0">
+                                <h2 className="text-xl font-extrabold text-slate-900 leading-tight truncate">{ticket.titulo}</h2>
+                                <p className="text-[11px] sm:text-sm text-slate-500 font-medium">
+                                    Por <span className="text-slate-800 font-bold">{ticket.profiles?.full_name}</span> • {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                </p>
+                            </div>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                navigator.clipboard.writeText(`NC-${ticket.numero_ticket}`);
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 transition-all text-white text-xs font-black tracking-widest shadow-lg active:scale-95"
+                        >
+                            {copied ? '¡COPIADO!' : `NC-${ticket.numero_ticket}`}
+                        </button>
+                    </div>
+
+                    {ticket.restaurantes && (
+                        <div className="flex flex-wrap items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-100 mb-5">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] w-full sm:w-auto mb-1 sm:mb-0">Ubicación</span>
+                            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-slate-600">
+                                <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm flex items-center gap-1">📍 {ticket.restaurantes.nombre_restaurante}</span>
+                                {ticket.catalogo_servicios && (
+                                    <>
+                                        <ChevronsRight className="w-3.5 h-3.5 text-slate-300" />
+                                        <span className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 shadow-sm">{ticket.catalogo_servicios.categoria}</span>
+                                        <ChevronsRight className="w-3.5 h-3.5 text-slate-300" />
+                                        <span className="bg-indigo-600 text-white px-2.5 py-1 rounded-lg shadow-md">{ticket.catalogo_servicios.elemento}</span>
+                                    </>
                                 )}
                             </div>
                         </div>
+                    )}
 
-                        <div className="shrink-0 mt-1">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(`NC-${ticket.numero_ticket}`);
-                                    setCopied(true);
-                                    setTimeout(() => setCopied(false), 2000);
-                                }}
-                                className="inline-flex items-center px-4 py-2 rounded-full bg-[#5C7AA3] hover:bg-[#4A6487] transition-colors text-white text-sm font-bold tracking-wider cursor-pointer shadow-md relative overflow-hidden group"
-                                title="Copiar número de ticket"
-                            >
-                                {copied ? '¡Copiado!' : `NC-${ticket.numero_ticket}`}
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="relative mt-2">
-                        <span className="absolute -top-3 right-4 bg-[#5C7AA3] text-white text-[11px] font-bold px-3 py-1 rounded-full shadow-sm tracking-widest uppercase z-10 border border-[#4A6487]">
-                            Descripción
+                    <div className="relative mt-6">
+                        <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.15em] z-10">
+                            Detalles de la Solicitud
                         </span>
                         <div
-                            className="prose prose-sm prose-indigo max-w-none text-gray-700 bg-gray-50/80 p-5 pt-6 rounded-xl border border-gray-100 shadow-inner"
+                            className="prose prose-sm max-w-none text-slate-700 bg-indigo-50/30 p-5 pt-7 rounded-2xl border border-indigo-100/50 shadow-inner italic leading-relaxed"
                             dangerouslySetInnerHTML={{ __html: ticket.descripcion }}
                         />
                     </div>
 
                     {ticket.adjuntos && ticket.adjuntos.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-1">
-                                <Paperclip className="w-3.5 h-3.5" /> Archivos Adjuntos ({ticket.adjuntos.length})
+                        <div className="mt-5 pt-4 border-t border-gray-100">
+                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
+                                <Paperclip className="w-3.5 h-3.5" /> Adjuntos ({ticket.adjuntos.length})
                             </h4>
-                            <div className="flex flex-wrap gap-3">
-                                {ticket.adjuntos.map((url: string, index: number) => {
-                                    const filename = url.split('/').pop() || `Archivo ${index + 1}`;
-                                    return (
-                                        <a
-                                            key={index}
-                                            href={url}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="flex items-center gap-2 p-2 pr-4 bg-white border border-gray-200 rounded-lg hover:border-indigo-300 hover:bg-indigo-50 transition-colors shadow-sm group"
-                                        >
-                                            <div className="bg-gray-50 p-1.5 rounded-md group-hover:bg-white transition-colors">
-                                                {getFileIcon(url)}
-                                            </div>
-                                            <span className="text-sm font-medium text-gray-700 group-hover:text-indigo-700 truncate max-w-[150px]">
-                                                {filename}
-                                            </span>
-                                        </a>
-                                    )
-                                })}
+                            <div className="flex flex-wrap gap-2">
+                                {ticket.adjuntos.map((url: string, index: number) => (
+                                    <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 transition-colors shadow-sm text-xs font-medium text-slate-600">
+                                        {getFileIcon(url)}
+                                        <span className="truncate max-w-[120px]">{url.split('/').pop()?.split('_').slice(1).join('_') || `Archivo ${index + 1}`}</span>
+                                    </a>
+                                ))}
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Message Input Box (Top-Down Layout) */}
+                {/* CAJA DE RESPUESTA */}
                 <div className="p-4 bg-slate-50 border-b border-t border-slate-200 shrink-0">
                     {ticket.estado === 'cerrado' ? (
                         <div className="bg-gray-50 text-center py-4 rounded-xl border border-gray-200 text-slate-500 font-medium text-sm">
@@ -242,10 +223,10 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                             {selectedFiles.length > 0 && (
                                 <div className="flex flex-wrap gap-2 bg-gray-50 p-2 rounded-lg border border-gray-100 mb-1">
                                     {selectedFiles.map((f, i) => (
-                                        <span key={i} className="text-xs bg-indigo-100 text-indigo-800 font-medium px-2 py-1 rounded-md border border-indigo-200 flex items-center gap-2 shadow-sm">
+                                        <span key={i} className="text-xs bg-indigo-100 text-indigo-800 font-medium px-2 py-1 rounded-md border border-indigo-200 flex items-center gap-2">
                                             <Paperclip className="w-3 h-3" />
                                             <span className="truncate max-w-[150px]">{f.name}</span>
-                                            <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500 ml-1 font-bold transition-colors">
+                                            <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500 ml-1 font-bold">
                                                 <XCircle className="w-4 h-4" />
                                             </button>
                                         </span>
@@ -253,51 +234,39 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 </div>
                             )}
 
-                            {/* Unified Editor Wrapper */}
                             <div className="border border-slate-300 rounded-2xl overflow-hidden bg-white flex flex-col shadow-sm">
                                 <ReactQuill
                                     theme="snow"
                                     value={newMessage}
                                     onChange={setNewMessage}
                                     placeholder="Escribe tu mensaje..."
-                                    className="text-slate-900 flex-1 [&_.ql-editor]:min-h-[100px] [&_.ql-container]:!border-0 [&_.ql-toolbar]:!border-0 [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-slate-200 [&_.ql-toolbar]:bg-slate-50/50 [&_.ql-editor]:focus:!ring-0 [&_.ql-editor]:focus:!outline-none [&_.ql-editor]:!border-transparent"
+                                    className="text-slate-900 flex-1 [&_.ql-editor]:min-h-[100px] [&_.ql-container]:!border-0 [&_.ql-toolbar]:!border-0 [&_.ql-toolbar]:!border-b [&_.ql-toolbar]:!border-slate-200 [&_.ql-toolbar]:bg-slate-50/50"
                                 />
 
                                 <input
                                     type="file"
                                     multiple
                                     ref={fileInputRef}
-                                    onChange={(e) => {
-                                        if (e.target.files) {
-                                            setSelectedFiles(Array.from(e.target.files));
-                                        }
-                                    }}
+                                    onChange={(e) => { if (e.target.files) setSelectedFiles(Array.from(e.target.files)); }}
                                     className="hidden"
                                     accept=".pdf,.jpg,.jpeg,.png,.xlsx,.csv,.docx"
                                 />
 
-                                {/* Bottom Actions Bar Inside Wrapper */}
                                 <div className="flex justify-between items-center bg-slate-50 p-2 border-t border-slate-200 h-16 shrink-0">
-                                    {/* Left Side: Attachment Button */}
-                                    <div className="flex flex-wrap items-center gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="ml-4 flex items-center justify-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors focus:outline-none shadow-sm border border-transparent hover:border-gray-300 bg-gray-100"
-                                            title="Adjuntar archivo"
-                                        >
-                                            <Paperclip className="w-4 h-4" />
-                                            <span>Adjuntar archivo</span>
-                                        </button>
-                                        <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">Máx 5 archivos (5MB c/u)</span>
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="ml-4 flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-300 bg-gray-100"
+                                    >
+                                        <Paperclip className="w-4 h-4" />
+                                        <span className="hidden sm:inline">Adjuntar</span>
+                                    </button>
 
-                                    {/* Right Side: Split Button */}
                                     <div className="mr-4 flex items-center h-10 relative">
                                         <button
                                             type="submit"
                                             disabled={(!newMessage.replace(/(<([^>]+)>)/gi, "").trim() && selectedFiles.length === 0) || isSubmitting}
-                                            className={`h-full px-6 bg-brand-primary text-white font-bold text-sm hover:bg-brand-secondary disabled:opacity-50 disabled:hover:bg-brand-primary transition-colors shadow-sm flex items-center justify-center ${isAgent && ticket.estado !== 'resuelto' ? 'rounded-l-lg border-r border-brand-secondary' : 'rounded-lg'}`}
+                                            className={`h-full px-6 bg-brand-primary text-white font-bold text-sm hover:bg-brand-secondary disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center ${isAgent && ticket.estado !== 'resuelto' ? 'rounded-l-lg border-r border-brand-secondary' : 'rounded-lg'}`}
                                         >
                                             Responder
                                         </button>
@@ -307,8 +276,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 <button
                                                     type="button"
                                                     onClick={() => setIsSplitOpen(!isSplitOpen)}
-                                                    disabled={(!newMessage.replace(/(<([^>]+)>)/gi, "").trim() && selectedFiles.length === 0) || isSubmitting}
-                                                    className="h-full px-3 bg-brand-primary text-white rounded-r-lg hover:bg-brand-secondary disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center"
+                                                    className="h-full px-3 bg-brand-primary text-white rounded-r-lg hover:bg-brand-secondary transition-colors shadow-sm flex items-center justify-center border-l border-white/20"
                                                 >
                                                     <ChevronDown className="w-4 h-4" />
                                                 </button>
@@ -316,45 +284,26 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 {isSplitOpen && (
                                                     <>
                                                         <div className="fixed inset-0 z-30" onClick={() => setIsSplitOpen(false)}></div>
-                                                        <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1 z-40 transform origin-bottom-right">
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => handleSendMessage(e, true)}
-                                                                className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors border-b border-gray-100"
-                                                            >
-                                                                <CheckCircle2 className="w-5 h-5" />
-                                                                Responder y solucionar
+                                                        <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1 z-40">
+                                                            <button type="button" onClick={(e) => handleSendMessage(e, true)} className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors border-b border-gray-100">
+                                                                <CheckCircle2 className="w-5 h-5" /> Responder y solucionar
                                                             </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => { setIsSplitOpen(false); setShowVisitPopover(true); }}
-                                                                className="w-full text-left px-4 py-3 text-sm font-bold text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors"
-                                                            >
-                                                                <Calendar className="w-5 h-5" />
-                                                                Responder y Programar Visita
+                                                            <button type="button" onClick={() => { setIsSplitOpen(false); setShowVisitPopover(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors">
+                                                                <Calendar className="w-5 h-5" /> Responder y Programar Visita
                                                             </button>
                                                         </div>
                                                     </>
                                                 )}
 
-                                                {/* VISITA PROGRAMADA POPOVER */}
                                                 {showVisitPopover && (
                                                     <>
                                                         <div className="fixed inset-0 z-30" onClick={() => setShowVisitPopover(false)}></div>
-                                                        <div className="absolute right-0 bottom-full mb-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 z-40 transform origin-bottom-right">
+                                                        <div className="absolute right-0 bottom-full mb-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 z-40">
                                                             <h4 className="text-sm font-bold text-gray-900 mb-2">Programar Visita</h4>
-                                                            <input
-                                                                type="date"
-                                                                required
-                                                                value={visitDate}
-                                                                onChange={e => setVisitDate(e.target.value)}
-                                                                className="w-full text-sm font-medium text-gray-900 border border-gray-300 rounded-lg py-2 px-3 mb-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                                            />
+                                                            <input type="date" required value={visitDate} onChange={e => setVisitDate(e.target.value)} className="w-full text-sm font-medium border border-gray-300 rounded-lg py-2 px-3 mb-3 focus:ring-2 focus:ring-indigo-500" />
                                                             <div className="flex gap-2 justify-end">
-                                                                <button type="button" onClick={() => setShowVisitPopover(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg transition-colors">Cancelar</button>
-                                                                <button type="button" onClick={handleScheduleVisit} disabled={isSubmitting || !visitDate} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-secondary disabled:opacity-50 transition-colors rounded-lg shadow-sm">
-                                                                    Confirmar
-                                                                </button>
+                                                                <button type="button" onClick={() => setShowVisitPopover(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                                                                <button type="button" onClick={handleScheduleVisit} disabled={isSubmitting || !visitDate} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-secondary rounded-lg">Confirmar</button>
                                                             </div>
                                                         </div>
                                                     </>
@@ -368,60 +317,42 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                     )}
                 </div>
 
-                {/* Conversation Flow (Messages) */}
+                {/* FLUJO DE CONVERSACIÓN */}
                 <div className="p-6 bg-gray-50/50 space-y-6 pb-10 rounded-b-2xl flex-1">
                     {messages.length === 0 ? (
                         <div className="text-center py-10">
                             <MessageSquare className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                             <h3 className="text-sm font-medium text-gray-900">No hay mensajes aún</h3>
-                            <p className="text-sm text-gray-500">Comienza la conversación enviando un mensaje abajo.</p>
                         </div>
                     ) : (
                         (() => {
                             let commentCounter = 0;
                             return messages.map((msg) => {
                                 const isMe = msg.sender_id === currentUserId;
-                                const isAgent = msg.profiles?.role === 'AGENTE';
+                                const isAgentMsg = msg.profiles?.role === 'AGENTE';
 
-                                // --- NUEVO DISEÑO PARA LA VISITA PROGRAMADA ---
                                 if (msg.tipo_evento === 'visita_programada') {
-                                    // Limpiamos la frase "Nota del agente:" si el backend la inyectó antes
                                     let cleanMessage = msg.mensaje || '';
                                     cleanMessage = cleanMessage.replace(/^Nota del agente:\s*/i, '');
-
                                     return (
                                         <div key={msg.id} className="flex justify-center my-8 w-full px-4">
                                             <div className="bg-indigo-50/50 border border-indigo-100 rounded-2xl shadow-sm flex flex-col items-center text-center w-full max-w-2xl overflow-hidden">
-                                                {/* Header Azul de la tarjeta */}
                                                 <div className="bg-indigo-600 w-full py-3 px-6 flex items-center justify-between text-white">
                                                     <div className="flex items-center gap-3">
-                                                        <div className="bg-white/20 p-1.5 rounded-lg backdrop-blur-sm">
-                                                            <Calendar className="w-5 h-5 text-white" />
-                                                        </div>
+                                                        <Calendar className="w-5 h-5 text-white" />
                                                         <div className="flex flex-col text-left">
-                                                            <span className="font-bold text-sm tracking-wide">Ticket programado, esperando fecha</span>
-                                                            <span className="text-[11px] text-indigo-200 font-medium">
-                                                                Agendado el {new Date(msg.creado_en).toLocaleDateString()} a las {new Date(msg.creado_en).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                            </span>
+                                                            <span className="font-bold text-sm tracking-wide">Visita Programada</span>
                                                         </div>
                                                     </div>
-                                                    <div className="font-semibold text-sm bg-indigo-700/50 px-3 py-1 rounded-full border border-indigo-500/50 text-right">
-                                                        <span className="block text-[10px] uppercase text-indigo-200 mb-0.5 tracking-wider">Fecha de Visita</span>
+                                                    <div className="font-semibold text-sm bg-indigo-700/50 px-3 py-1 rounded-full border border-indigo-500/50">
                                                         {ticket.fecha_programada ? new Intl.DateTimeFormat('es-CL', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(ticket.fecha_programada)) : 'Fecha pendiente'}
                                                     </div>
                                                 </div>
-
-                                                {/* Cuerpo del mensaje (Renderizado Seguro del HTML) */}
-                                                {cleanMessage && cleanMessage.trim() !== '' && cleanMessage !== '<p><br></p>' && (
+                                                {cleanMessage && cleanMessage.trim() !== '' && (
                                                     <div className="w-full p-5">
                                                         <div className="bg-white border border-indigo-100 rounded-xl p-4 text-left shadow-sm relative mt-2">
-                                                            <span className="absolute -top-2.5 left-4 bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
-                                                                Nota del agente
-                                                            </span>
-                                                            <div
-                                                                className="prose prose-sm prose-indigo max-w-none text-slate-700"
-                                                                dangerouslySetInnerHTML={{ __html: cleanMessage }}
-                                                            />
+                                                            <span className="absolute -top-2.5 left-4 bg-indigo-100 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Nota del agente</span>
+                                                            <div className="prose prose-sm prose-indigo max-w-none text-slate-700" dangerouslySetInnerHTML={{ __html: cleanMessage }} />
                                                         </div>
                                                     </div>
                                                 )}
@@ -433,7 +364,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 if (msg.es_sistema) {
                                     return (
                                         <div key={msg.id} className="flex justify-center my-4 w-full">
-                                            <div className="bg-slate-100 text-slate-500 px-4 py-1.5 rounded-full text-xs font-medium italic border border-slate-200 shadow-sm flex items-center gap-2">
+                                            <div className="bg-slate-100 text-slate-500 px-4 py-1.5 rounded-full text-xs font-medium italic border border-slate-200">
                                                 {msg.mensaje}
                                             </div>
                                         </div>
@@ -441,54 +372,35 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 }
 
                                 commentCounter++;
-
                                 return (
                                     <div key={msg.id} className="flex gap-4 w-full">
-                                        <div className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm ${isAgent ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
+                                        <div className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm ${isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
                                             {msg.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
                                         </div>
                                         <div className="flex-1 bg-white border border-gray-200 rounded-xl p-5 shadow-sm relative">
-                                            <div className="absolute top-4 right-4 text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">
-                                                #{commentCounter}
-                                            </div>
+                                            <div className="absolute top-4 right-4 text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">#{commentCounter}</div>
                                             <div className="flex justify-between items-center mb-3 pr-12">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-bold text-gray-900 text-sm">{msg.profiles?.full_name || 'Usuario desconocido'}</span>
-                                                    {isAgent && (
-                                                        <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] uppercase font-bold tracking-wider">Agente</span>
-                                                    )}
-                                                    {isMe && !isAgent && (
-                                                        <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] uppercase font-bold tracking-wider">Tú</span>
-                                                    )}
+                                                    {isAgentMsg && <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] uppercase font-bold tracking-wider">Agente</span>}
+                                                    {isMe && !isAgentMsg && <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] uppercase font-bold tracking-wider">Tú</span>}
                                                 </div>
                                                 <span className="text-xs text-gray-400 font-medium">{timeAgo(msg.creado_en)}</span>
                                             </div>
-                                            {msg.mensaje && (
-                                                <div
-                                                    className="prose prose-sm max-w-none text-slate-700 max-h-[350px] overflow-y-auto pb-2 custom-scrollbar"
-                                                    dangerouslySetInnerHTML={{ __html: msg.mensaje }}
-                                                />
-                                            )}
-
-                                            {/* RENDER ADJUNTOS EN BURBUJA */}
+                                            <div className="prose prose-sm max-w-none text-slate-700 max-h-[350px] overflow-y-auto pb-2 custom-scrollbar" dangerouslySetInnerHTML={{ __html: msg.mensaje }} />
                                             {msg.adjuntos && msg.adjuntos.length > 0 && (
                                                 <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-3">
                                                     {msg.adjuntos.map((url: string, idx: number) => {
                                                         const ext = url.split('.').pop()?.toLowerCase();
                                                         const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
-                                                        const filename = url.split('/').pop()?.split('_').slice(1).join('_') || `Adjunto ${idx + 1}`;
-
                                                         return isImage ? (
-                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="block w-48 h-32 overflow-hidden rounded-lg border border-gray-200 shadow-sm hover:opacity-90 transition-opacity">
-                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                                <img src={url} alt={filename} className="w-full h-full object-cover" />
+                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="block w-48 h-32 overflow-hidden rounded-lg border border-gray-200 hover:opacity-90 transition-opacity">
+                                                                <img src={url} alt="Adjunto" className="w-full h-full object-cover" />
                                                             </a>
                                                         ) : (
-                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 shadow-sm text-sm transition-colors hover:bg-gray-50 bg-white group">
-                                                                <div className="bg-gray-100 p-2 rounded-md group-hover:bg-white transition-colors">
-                                                                    {getFileIcon(url)}
-                                                                </div>
-                                                                <span className="truncate max-w-[200px] font-medium text-gray-700 group-hover:text-indigo-600 transition-colors">{filename}</span>
+                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 shadow-sm text-sm hover:bg-gray-50 bg-white group transition-colors">
+                                                                {getFileIcon(url)}
+                                                                <span className="truncate max-w-[200px] font-medium text-gray-700 group-hover:text-indigo-600">{url.split('/').pop()?.split('_').slice(1).join('_') || `Adjunto ${idx + 1}`}</span>
                                                             </a>
                                                         );
                                                     })}
@@ -501,61 +413,26 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                         })()
                     )}
 
-                    {/* FINAL CLOSED CARD */}
                     {ticket.estado === 'cerrado' && (
-                        <div className="mt-8 p-6 bg-emerald-50/80 border border-emerald-200 rounded-xl relative shadow-sm flex flex-col items-center text-center">
-                            <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-3 shadow-inner">
-                                <CheckCircle2 className="w-6 h-6" />
-                            </div>
+                        <div className="mt-8 p-6 bg-emerald-50/80 border border-emerald-200 rounded-xl flex flex-col items-center text-center">
+                            <CheckCircle2 className="w-12 h-12 text-emerald-600 mb-3" />
                             <h3 className="text-xl font-bold text-gray-900 mb-1">Resolución Aceptada</h3>
-                            <p className="text-sm text-gray-600 mb-4">El usuario ha confirmado que el problema fue resuelto.</p>
-                            {!!ticket.calificacion && (
-                                <div className="bg-white px-6 py-5 rounded-xl border border-emerald-100 shadow-sm w-full max-w-lg mt-2">
-                                    <span className="block text-xs font-bold uppercase tracking-wider text-gray-400 mb-2">Calificación del Servicio</span>
-                                    <div className="flex justify-center gap-1 mb-4">
-                                        {[1, 2, 3, 4, 5].map(star => (
-                                            <Star key={star} className={`w-8 h-8 ${star <= ticket.calificacion ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
-                                        ))}
-                                    </div>
-                                    {ticket.feedback_cliente && (
-                                        <div className="relative mt-4">
-                                            <span className="absolute -top-3 left-4 bg-white px-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Comentario</span>
-                                            <p className="text-sm text-gray-700 italic border border-gray-100 bg-gray-50/50 p-4 rounded-lg flex items-center justify-center min-h-[60px]">&quot;{ticket.feedback_cliente}&quot;</p>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                            <p className="text-sm text-gray-600">El ticket ha sido finalizado con éxito.</p>
                         </div>
                     )}
-
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* RESOLUTION PROMPT FOR USUARIO */}
                 {ticket.estado === 'resuelto' && currentUserId === ticket.creado_por && (
-                    <div className="p-5 mx-6 mb-6 bg-emerald-50 border border-emerald-200 rounded-xl relative shadow-sm shrink-0 drop-shadow-sm">
+                    <div className="p-5 mx-6 mb-6 bg-emerald-50 border border-emerald-200 rounded-xl shadow-sm">
                         <div className="flex gap-4 items-start">
-                            <div className="p-2 bg-emerald-100 rounded-full shrink-0 text-emerald-600">
-                                <CheckCircle2 className="w-6 h-6" />
-                            </div>
+                            <CheckCircle2 className="w-6 h-6 text-emerald-600" />
                             <div className="flex-1">
-                                <h4 className="text-lg font-bold text-gray-900 mb-1">El equipo técnico ha propuesto una solución.</h4>
-                                <p className="text-sm text-gray-600 mb-4">
-                                    Revisa los últimos mensajes. Si tu problema fue resuelto con éxito, por favor aprueba la solución. Si persiste, puedes rechazarla para reabrir el ticket.
-                                </p>
+                                <h4 className="text-lg font-bold text-gray-900 mb-1">Solución Propuesta</h4>
+                                <p className="text-sm text-gray-600 mb-4">Por favor revisa y aprueba si el problema fue resuelto.</p>
                                 <div className="flex flex-wrap gap-3">
-                                    <button
-                                        onClick={() => setShowApproveModal(true)}
-                                        className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-lg shadow-sm hover:bg-emerald-700 transition-colors box-border"
-                                    >
-                                        Aceptar Solución
-                                    </button>
-                                    <button
-                                        onClick={() => setShowRejectModal(true)}
-                                        className="px-5 py-2.5 bg-white text-gray-700 font-bold border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors box-border"
-                                    >
-                                        Rechazar (Aún no funciona)
-                                    </button>
+                                    <button onClick={() => setShowApproveModal(true)} className="px-5 py-2.5 bg-emerald-600 text-white font-bold rounded-lg hover:bg-emerald-700 transition-colors">Aceptar Solución</button>
+                                    <button onClick={() => setShowRejectModal(true)} className="px-5 py-2.5 bg-white text-gray-700 font-bold border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Rechazar</button>
                                 </div>
                             </div>
                         </div>
@@ -563,71 +440,42 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                 )}
             </div>
 
-            {/* APPROVE MODAL */}
-            {
-                showApproveModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
-                            <h3 className="text-xl font-bold text-slate-900 mb-2">Califica nuestro servicio</h3>
-                            <p className="text-sm text-slate-500 mb-6">Por favor danos una nota sobre 5 para ayudarnos a mejorar.</p>
-
-                            <div className="flex justify-center gap-2 mb-6">
-                                {[1, 2, 3, 4, 5].map(star => (
-                                    <button
-                                        key={star}
-                                        onClick={() => setRating(star)}
-                                        className="focus:outline-none"
-                                    >
-                                        <Star className={`w-10 h-10 transition-colors ${rating >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
-                                    </button>
-                                ))}
-                            </div>
-
-                            <textarea
-                                value={feedback}
-                                onChange={e => setFeedback(e.target.value)}
-                                placeholder="Comentario adicional (Opcional)..."
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm mb-6 focus:ring-2 focus:ring-indigo-500 outline-none"
-                                rows={3}
-                            />
-
-                            <div className="flex gap-3 justify-end">
-                                <button disabled={isSubmitting} onClick={() => setShowApproveModal(false)} className="px-5 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg">Cancelar</button>
-                                <button disabled={isSubmitting || rating === 0} onClick={handleApprove} className="px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg disabled:opacity-50 hover:bg-indigo-700">Guardar Calificación</button>
-                            </div>
+            {/* MODALES DE RESOLUCIÓN */}
+            {showApproveModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+                        <h3 className="text-xl font-bold text-slate-900 mb-2">Califica el servicio</h3>
+                        <div className="flex justify-center gap-2 mb-6 mt-4">
+                            {[1, 2, 3, 4, 5].map(star => (
+                                <button key={star} onClick={() => setRating(star)} className="focus:outline-none">
+                                    <Star className={`w-10 h-10 transition-colors ${rating >= star ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200'}`} />
+                                </button>
+                            ))}
+                        </div>
+                        <textarea value={feedback} onChange={e => setFeedback(e.target.value)} placeholder="Comentario adicional (Opcional)..." className="w-full p-3 border rounded-lg text-sm mb-6 focus:ring-2 focus:ring-indigo-500 outline-none" rows={3} />
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={() => setShowApproveModal(false)} className="px-5 py-2 text-gray-600 font-semibold">Cancelar</button>
+                            <button disabled={isSubmitting || rating === 0} onClick={handleApprove} className="px-5 py-2 bg-indigo-600 text-white font-bold rounded-lg disabled:opacity-50">Guardar</button>
                         </div>
                     </div>
-                )
-            }
+                </div>
+            )}
 
-            {/* REJECT MODAL */}
-            {
-                showRejectModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-                        <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6 relative">
-                            <div className="flex items-center gap-3 mb-2 text-red-600">
-                                <XCircle className="w-6 h-6" />
-                                <h3 className="text-xl font-bold text-slate-900">Rechazar Resolución</h3>
-                            </div>
-                            <p className="text-sm text-slate-500 mb-6">El ticket volverá al estado <b>abierto</b>. Por favor, explica brevemente qué falla o por qué no se ha solucionado.</p>
-
-                            <textarea
-                                value={rejectReason}
-                                onChange={e => setRejectReason(e.target.value)}
-                                placeholder="El equipo no funcionó al reiniciar..."
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm mb-6 focus:ring-2 focus:ring-red-500 outline-none"
-                                rows={4}
-                            />
-
-                            <div className="flex gap-3 justify-end">
-                                <button disabled={isSubmitting} onClick={() => setShowRejectModal(false)} className="px-5 py-2 text-gray-600 font-semibold hover:bg-gray-100 rounded-lg">Cancelar</button>
-                                <button disabled={isSubmitting || !rejectReason.trim()} onClick={handleReject} className="px-5 py-2 bg-red-600 text-white font-bold rounded-lg disabled:opacity-50 hover:bg-red-700">Enviar Rechazo</button>
-                            </div>
+            {showRejectModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-md p-6 relative shadow-2xl">
+                        <div className="flex items-center gap-3 mb-4 text-red-600">
+                            <XCircle className="w-6 h-6" />
+                            <h3 className="text-xl font-bold text-slate-900">Rechazar Resolución</h3>
+                        </div>
+                        <textarea value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="¿Por qué no se ha solucionado?..." className="w-full p-3 border rounded-lg text-sm mb-6 focus:ring-2 focus:ring-red-500 outline-none" rows={4} />
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={() => setShowRejectModal(false)} className="px-5 py-2 text-gray-600 font-semibold">Cancelar</button>
+                            <button disabled={isSubmitting || !rejectReason.trim()} onClick={handleReject} className="px-5 py-2 bg-red-600 text-white font-bold rounded-lg disabled:opacity-50">Enviar Rechazo</button>
                         </div>
                     </div>
-                )
-            }
-
+                </div>
+            )}
         </div>
     );
 }

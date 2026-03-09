@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import { useState, useRef, useEffect } from 'react';
-import { Bell, User, LogOut, Search, LayoutDashboard, Plus, X, PieChart, Infinity } from 'lucide-react';
+import { Bell, User, LogOut, Search, LayoutDashboard, Plus, X, PieChart } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
@@ -19,11 +19,9 @@ interface TopNavProps {
 export default function TopNav({ userFullName, userRole }: TopNavProps) {
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const [isNotifOpen, setIsNotifOpen] = useState(false);
-    const [isStatusModalOpen, setIsStatusModalOpen] = useState(false); // Renamed to avoid exact conflict, but we'll use isTicketModalOpen
     const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
     const [notifications, setNotifications] = useState<Notification[]>([]);
 
-    // Search State
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState<{ id: string, numero_ticket: number, titulo: string }[]>([]);
     const [isSearching, setIsSearching] = useState(false);
@@ -36,7 +34,6 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
     const pathname = usePathname();
     const supabase = createClient();
 
-    // 1. Initial Notification Fetch & Subscription
     useEffect(() => {
         const fetchNotifications = async () => {
             const { data: { user } } = await supabase.auth.getUser();
@@ -54,14 +51,12 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
 
         fetchNotifications();
 
-        // Real-time listener
         const channel = supabase
             .channel('realtime-notifications')
             .on(
                 'postgres_changes',
                 { event: 'INSERT', schema: 'public', table: 'notifications' },
                 (payload) => {
-                    // Prepend new notification
                     setNotifications(prev => [payload.new as Notification, ...prev]);
                 }
             )
@@ -78,7 +73,6 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
         router.refresh();
     };
 
-    // 2. Debounced Search Autocomplete
     const fetchSearchResults = useRef(
         debounce(async (query: string) => {
             if (!query.trim()) {
@@ -90,24 +84,20 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
             const isNumber = /^\d+$/.test(query.replace(/\D/g, ''));
             const numVal = isNumber ? parseInt(query.replace(/\D/g, '')) : null;
 
-            type SearchQuery = ReturnType<typeof supabase.from>;
             let q = supabase
                 .from('tickets')
                 .select('id, numero_ticket, titulo')
                 .limit(5);
 
             if (numVal !== null && !isNaN(numVal)) {
-                // Si parece un número, priorizamos buscar por ID
                 q = q.eq('numero_ticket', numVal);
             } else {
-                // Búsqueda por texto en título
                 q = q.ilike('titulo', `%${query}%`);
             }
 
             const { data, error } = await q;
 
             if (!error && data) {
-                // Try fallback ilike if number search failed but they typed something like TKT-12
                 if (data.length === 0 && query.length > 2 && numVal === null) {
                     const fallback = await supabase
                         .from('tickets')
@@ -136,7 +126,6 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
 
     const handleSearchSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        // Fallback al comportamiento original si presionan Enter
         if (searchResults.length > 0) {
             handleResultClick(searchResults[0].id);
         } else if (searchQuery.trim() && !isSearching) {
@@ -155,17 +144,13 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
         router.push(`/dashboard/ticket/${id}`);
     };
 
-    // 3. Mark Notification Read
     const handleNotificationClick = async (notif: Notification) => {
-        // Optimistic UI update
         setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, leida: true } : n));
         setIsNotifOpen(false);
-
         await markNotificationReadAction(notif.id);
         router.push(`/dashboard/ticket/${notif.ticket_id}`);
     };
 
-    // Close dropdowns when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -193,24 +178,27 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div className="flex justify-between items-center h-16">
 
-                    {/* Left: Branding & Search */}
-                    <div className="flex items-center gap-8 flex-1">
-                        <Link href={dashboardLink} className="flex items-center gap-3 group flex-shrink-0">
-                            {/* Contenedor blanco semitransparente para dar contraste al logo */}
-                            <div className=" group-hover:scale-105 transition-all duration-300">
+                    {/* IZQUIERDA: Logo */}
+                    <div className="flex items-center flex-shrink-0">
+                        <Link href={dashboardLink} className="flex items-center group">
+                            <div className="group-hover:scale-105 transition-all duration-300">
                                 <Image
                                     src="/looplogo.png"
                                     alt="Logo Loop"
                                     width={150}
                                     height={50}
-                                    className="w-auto max-w-[140px] sm:max-w-[180px] h-10 sm:h-12 object-contain drop-shadow-sm"
+                                    className="w-auto max-w-[120px] sm:max-w-[180px] h-10 sm:h-12 object-contain drop-shadow-sm"
                                     priority
                                 />
                             </div>
                         </Link>
+                    </div>
 
-                        {/* Search Bar with Autocomplete */}
-                        <div ref={searchRef} className="max-w-md w-full relative hidden sm:block">
+                    {/* CENTRO: Búsqueda (PC) o Botón Crear (Móvil) */}
+                    <div className="flex-1 flex justify-center items-center px-4">
+
+                        {/* BARRA DE BÚSQUEDA: Visible solo en PC (md:block) */}
+                        <div ref={searchRef} className="hidden md:block max-w-md w-full relative">
                             <form onSubmit={handleSearchSubmit}>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -218,7 +206,7 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                     </div>
                                     <input
                                         type="text"
-                                        placeholder="Buscar por ID de ticket o título..."
+                                        placeholder="Buscar por ID o título..."
                                         value={searchQuery}
                                         onChange={handleSearchChange}
                                         onFocus={() => { if (searchQuery.trim()) setShowSearchDropdown(true); }}
@@ -232,13 +220,11 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                 </div>
                             </form>
 
-                            {/* Dropdown Menu para Autocompletado */}
+                            {/* Dropdown de Búsqueda */}
                             {showSearchDropdown && searchQuery.trim().length > 0 && (
                                 <div className="absolute mt-2 w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden py-1 z-50 ring-1 ring-black ring-opacity-5">
                                     {searchResults.length === 0 && !isSearching ? (
-                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">
-                                            No se encontraron tickets.
-                                        </div>
+                                        <div className="px-4 py-3 text-sm text-gray-500 text-center">No se encontraron tickets.</div>
                                     ) : (
                                         searchResults.map(ticket => (
                                             <button
@@ -246,58 +232,58 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                                 onClick={() => handleResultClick(ticket.id)}
                                                 className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-0"
                                             >
-                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">
-                                                    #{ticket.numero_ticket}
-                                                </span>
-                                                <span className="text-sm font-medium text-slate-700 truncate">
-                                                    {ticket.titulo}
-                                                </span>
+                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">#{ticket.numero_ticket}</span>
+                                                <span className="text-sm font-medium text-slate-700 truncate">{ticket.titulo}</span>
                                             </button>
                                         ))
                                     )}
                                 </div>
                             )}
                         </div>
+
+                        {/* BOTÓN CREAR MÓVIL: Visible solo en móviles (md:hidden) y si es Solicitante */}
+                        {userRole === 'SOLICITANTE' && (
+                            <button
+                                onClick={() => setIsTicketModalOpen(true)}
+                                className="md:hidden w-full max-w-[200px] bg-white text-brand-primary hover:bg-slate-50 font-black py-2 px-3 rounded-xl shadow-md transition-all flex items-center justify-center gap-1 active:scale-95 mx-2"
+                            >
+                                <Plus className="w-4 h-4 shrink-0" />
+                                <span className="text-xs uppercase tracking-tight truncate">Solicitud</span>
+                            </button>
+                        )}
                     </div>
 
-                    {/* Right: Actions */}
-                    <div className="flex items-center gap-4 ml-4">
+                    {/* DERECHA: Acciones y Perfil */}
+                    <div className="flex items-center gap-1 sm:gap-4 flex-shrink-0">
 
-                        {/* Quick Nav Options */}
-                        <div className="flex items-center gap-2 mr-2">
-                            {/* ESTA ES LA MAGIA: SOLO SE MUESTRA SI ES USUARIO */}
-                            {userRole === 'SOLICITANTE' && (
-                                <button
-                                    onClick={() => setIsTicketModalOpen(true)}
-                                    className="bg-white text-brand-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg shadow-sm transition-all flex items-center gap-2"
-                                >
-                                    <Plus className="w-5 h-5" />
-                                    <span className="hidden sm:inline">Nueva Solicitud</span>
-                                </button>
-                            )}
-
-                            <Link
-                                href="/dashboard/analiticas"
-                                className={`hidden sm:flex p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer ml-1 ${pathname === '/dashboard/analiticas'
-                                    ? 'bg-white/20 text-white shadow-inner'
-                                    : 'text-white/90 hover:text-white hover:bg-white/10'
-                                    }`}
-                                title="Analíticas"
+                        {/* BOTÓN CREAR PC: Visible solo en PC y si es Solicitante */}
+                        {userRole === 'SOLICITANTE' && (
+                            <button
+                                onClick={() => setIsTicketModalOpen(true)}
+                                className="hidden md:flex bg-white text-brand-primary hover:bg-slate-50 font-bold py-2 px-4 rounded-lg shadow-sm transition-all items-center gap-2 mr-2"
                             >
-                                <PieChart className="w-5 h-5" />
-                            </Link>
+                                <Plus className="w-5 h-5" />
+                                <span>Nueva Solicitud</span>
+                            </button>
+                        )}
 
-                            <Link
-                                href={dashboardLink}
-                                className={`hidden sm:flex p-2 rounded-full transition-colors flex items-center justify-center cursor-pointer ml-1 ${pathname === dashboardLink || pathname?.startsWith('/dashboard/ticket/')
-                                    ? 'bg-white/20 text-white shadow-inner'
-                                    : 'text-white/90 hover:text-white hover:bg-white/10'
-                                    }`}
-                                title="Panel de Control"
-                            >
-                                <LayoutDashboard className="w-5 h-5" />
-                            </Link>
-                        </div>
+                        {/* Botones de Navegación Rápida (Analíticas y Dashboard) */}
+                        {/* NOTA: Estos iconos se Ocultan en móvil (hidden sm:flex) como lo habíamos pedido antes */}
+                        <Link
+                            href="/dashboard/analiticas"
+                            className={`hidden sm:flex p-2 rounded-full transition-colors items-center justify-center cursor-pointer ml-1 ${pathname === '/dashboard/analiticas' ? 'bg-white/20 text-white shadow-inner' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
+                            title="Analíticas"
+                        >
+                            <PieChart className="w-5 h-5" />
+                        </Link>
+
+                        <Link
+                            href={dashboardLink}
+                            className={`hidden sm:flex p-2 rounded-full transition-colors items-center justify-center cursor-pointer ml-1 ${pathname === dashboardLink || pathname?.startsWith('/dashboard/ticket/') ? 'bg-white/20 text-white shadow-inner' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
+                            title="Panel de Control"
+                        >
+                            <LayoutDashboard className="w-5 h-5" />
+                        </Link>
 
                         {/* Notifications Bell */}
                         <div className="relative" ref={notifRef}>
@@ -305,41 +291,43 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                 onClick={() => setIsNotifOpen(!isNotifOpen)}
                                 className="relative p-2 text-white/90 hover:text-white hover:bg-white/10 rounded-full transition-colors focus:outline-none"
                             >
-                                <span className="sr-only">Ver notificaciones</span>
                                 <Bell className="w-5 h-5" />
-                                {/* Red Dot indicator */}
                                 {notifications.some(n => !n.leida) && (
-                                    <span className="absolute top-1.5 right-1.5 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                                    <span className="absolute top-1.5 right-1.5 block h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-brand-primary"></span>
                                 )}
                             </button>
 
-                            {/* Notifications Dropdown */}
+                            {/* Dropdown de Notificaciones Rediseñado */}
                             {isNotifOpen && (
-                                <div className="absolute right-0 mt-2 w-80 rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 py-2 z-50 origin-top-right transition-all transform scale-100">
-                                    <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
-                                        <h3 className="text-sm font-bold text-gray-900">Notificaciones</h3>
-                                        <span className="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                                <div className="absolute right-0 mt-3 w-[280px] sm:w-80 rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 py-2 z-50 origin-top-right overflow-hidden">
+                                    <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-slate-50/50">
+                                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tighter">Notificaciones</h3>
+                                        <span className="bg-indigo-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                                             {notifications.filter(n => !n.leida).length} Nuevas
                                         </span>
                                     </div>
-                                    <div className="max-h-80 overflow-y-auto">
+                                    <div className="max-h-[350px] overflow-y-auto">
                                         {notifications.length === 0 ? (
-                                            <div className="px-4 py-6 text-sm text-center text-gray-500">
-                                                No tienes notificaciones recientes.
-                                            </div>
+                                            <div className="px-4 py-10 text-sm text-center text-slate-400">No hay novedades.</div>
                                         ) : (
                                             notifications.map(notif => (
                                                 <button
                                                     key={notif.id}
                                                     onClick={() => handleNotificationClick(notif)}
-                                                    className={`w-full text-left px-4 py-3 border-b border-gray-50 transition-colors last:border-0 ${notif.leida ? 'bg-white hover:bg-gray-50 opacity-80' : 'bg-indigo-50/40 hover:bg-indigo-50/80'}`}
+                                                    className={`w-full text-left px-4 py-4 border-b border-slate-50 transition-all flex gap-3 ${notif.leida ? 'bg-white' : 'bg-indigo-50/30 hover:bg-indigo-50/60'}`}
                                                 >
-                                                    <p className={`text-sm mb-1 leading-snug ${notif.leida ? 'font-medium text-slate-600' : 'font-bold text-slate-900'}`}>
-                                                        {notif.mensaje}
-                                                    </p>
-                                                    <p className="text-xs text-slate-400 font-medium">
-                                                        {new Date(notif.creado_en).toLocaleDateString()}
-                                                    </p>
+                                                    <div className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${notif.leida ? 'bg-slate-200' : 'bg-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.4)]'}`} />
+                                                    <div className="flex flex-col gap-1 min-w-0">
+                                                        <p className={`text-[13px] leading-tight line-clamp-2 ${notif.leida ? 'font-medium text-slate-500' : 'font-bold text-slate-900'}`}>
+                                                            {notif.mensaje}
+                                                        </p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">
+                                                                {new Date(notif.creado_en).toLocaleDateString()}
+                                                            </span>
+                                                            {!notif.leida && <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">Nuevo</span>}
+                                                        </div>
+                                                    </div>
                                                 </button>
                                             ))
                                         )}
@@ -348,14 +336,14 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                             )}
                         </div>
 
-                        {/* Divider */}
-                        <div className="h-6 w-px bg-white/20 hidden sm:block"></div>
+                        {/* Divider PC */}
+                        <div className="h-6 w-px bg-white/20 hidden sm:block mx-1"></div>
 
                         {/* Profile Dropdown */}
                         <div className="relative" ref={dropdownRef}>
                             <button
                                 onClick={() => setIsProfileOpen(!isProfileOpen)}
-                                className="flex items-center gap-2 focus:outline-none rounded-full ring-2 ring-transparent focus:ring-brand-accent hover:bg-white/10 p-1 transition-all"
+                                className="flex items-center gap-2 focus:outline-none rounded-full hover:bg-white/10 p-1 transition-all"
                             >
                                 <span className="hidden sm:block text-sm font-bold text-white max-w-[120px] truncate">
                                     {userFullName || 'Usuario'}
@@ -365,30 +353,23 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                 </div>
                             </button>
 
-                            {/* Dropdown Menu */}
                             {isProfileOpen && (
-                                <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white shadow-lg ring-1 ring-black ring-opacity-5 py-1 z-50 origin-top-right transition-all">
-
-                                    <div className="px-4 py-2 text-xs text-gray-500 border-b border-gray-100 mb-1">
-                                        Conectado como <br />
-                                        <span className="font-bold text-slate-800 uppercase tracking-wider">{userRole}</span>
+                                <div className="absolute right-0 mt-3 w-48 rounded-xl bg-white shadow-xl ring-1 ring-black/5 py-1 z-50 origin-top-right">
+                                    <div className="px-4 py-2 text-[10px] text-slate-400 font-bold uppercase tracking-widest border-b border-slate-50 mb-1">
+                                        {userRole}
                                     </div>
-
                                     <Link
                                         href="/dashboard/perfil"
                                         onClick={() => setIsProfileOpen(false)}
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 hover:text-brand-primary transition-colors cursor-pointer flex items-center gap-2"
+                                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                                     >
-                                        <User className="w-4 h-4" />
-                                        <span>Mi Perfil</span>
+                                        <User className="w-4 h-4" /> Mi Perfil
                                     </Link>
-
                                     <button
                                         onClick={handleSignOut}
-                                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 transition-colors flex items-center gap-2 border-t border-gray-100 mt-1 pt-2"
+                                        className="w-full text-left px-4 py-2.5 text-sm font-bold text-red-600 hover:bg-red-50 flex items-center gap-2 border-t border-slate-50 mt-1"
                                     >
-                                        <LogOut className="w-4 h-4" />
-                                        <span>Cerrar Sesión</span>
+                                        <LogOut className="w-4 h-4" /> Salir
                                     </button>
                                 </div>
                             )}
@@ -397,33 +378,18 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                 </div>
             </div>
 
-            {/* Global Creation Modal */}
+            {/* Modal de Creación Global */}
             {isTicketModalOpen && (
                 <div className="fixed inset-0 z-[100] overflow-y-auto">
-                    <div className="flex min-h-screen items-center justify-center p-4 text-center sm:p-0">
-                        {/* Backdrop with Glassmorphism */}
-                        <div
-                            className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 transition-opacity"
-                            onClick={() => setIsTicketModalOpen(false)}
-                            aria-hidden="true"
-                        />
-
-                        {/* Modal Panel */}
-                        <div className="relative z-[60] transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-gray-100">
-                            {/* Close Button top right */}
-                            <div className="absolute right-0 top-0 pr-4 pt-4 z-10">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsTicketModalOpen(false)}
-                                    className="rounded-full bg-white p-1 text-gray-400 hover:text-gray-500 focus:outline-none hover:bg-gray-100 transition-colors shadow-sm"
-                                >
-                                    <span className="sr-only">Close</span>
-                                    <X className="h-6 w-6" aria-hidden="true" />
+                    <div className="flex min-h-screen items-center justify-center p-4 text-center">
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50" onClick={() => setIsTicketModalOpen(false)} />
+                        <div className="relative z-[60] transform overflow-hidden rounded-3xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-2xl border border-white/20">
+                            <div className="absolute right-0 top-0 pr-6 pt-6 z-10">
+                                <button onClick={() => setIsTicketModalOpen(false)} className="rounded-full bg-slate-100 p-2 text-slate-400 hover:text-slate-600 transition-colors">
+                                    <X className="h-5 w-5" />
                                 </button>
                             </div>
-
-                            {/* Ticket Form */}
-                            <div className="p-1">
+                            <div className="p-2">
                                 <TicketForm onClose={() => setIsTicketModalOpen(false)} />
                             </div>
                         </div>

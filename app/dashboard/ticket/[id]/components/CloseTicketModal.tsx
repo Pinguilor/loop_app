@@ -4,7 +4,7 @@ import React, { useState, useRef } from 'react';
 import { X, CheckCircle, FileText, User as UserIcon, LayoutTemplate, Briefcase } from 'lucide-react';
 import dynamic from 'next/dynamic';
 
-const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false });
+const SignatureCanvas = dynamic(() => import('react-signature-canvas'), { ssr: false }) as any;
 
 interface Props {
     isOpen: boolean;
@@ -201,7 +201,7 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
                                 </button>
                             </div>
                             <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl overflow-hidden touch-none relative" style={{ height: 160 }}>
-                                {/* @ts-ignore */}
+
                                 <SignatureCanvas
                                     ref={sigCanvasCliente}
                                     penColor="black"

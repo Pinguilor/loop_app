@@ -33,7 +33,7 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
         sigCanvasCliente.current?.clear();
         pullTrigger();
     };
-    
+
     const clearTecnico = () => {
         sigCanvasTecnico.current?.clear();
         pullTrigger();
@@ -76,7 +76,7 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
         } catch (error: any) {
             console.error('GPS Error:', error);
             setIsLocating(false);
-            
+
             let mensajeError = 'Error desconocido al obtener la ubicación.';
             switch (error.code) {
                 case 1:
@@ -89,15 +89,15 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
                     mensajeError = 'Tiempo de espera agotado al buscar el GPS.';
                     break;
             }
-            
+
             setGpsError(mensajeError);
             setIsSubmitting(false);
         }
     };
 
     // Filter used materials from packing list (salida and not pendiente)
-    const usedMaterials = materiales.filter(item => 
-        item.tipo_movimiento === 'salida' && 
+    const usedMaterials = materiales.filter(item =>
+        item.tipo_movimiento === 'salida' &&
         item.estado !== 'pendiente' &&
         item.estado !== 'devuelto'
     );
@@ -105,7 +105,7 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
     return (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-in fade-in" onClick={!isSubmitting ? onClose : undefined} />
-            
+
             <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center shrink-0 bg-slate-50/50">
@@ -201,8 +201,9 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
                                 </button>
                             </div>
                             <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl overflow-hidden touch-none relative" style={{ height: 160 }}>
-                                <SignatureCanvas 
-                                    ref={sigCanvasCliente} 
+                                {/* @ts-expect-error Ignorando el tipado estricto de Vercel para el ref de esta librería */}
+                                <SignatureCanvas
+                                    ref={sigCanvasCliente}
                                     penColor="black"
                                     canvasProps={{ className: 'w-full h-full cursor-crosshair' }}
                                     onEnd={pullTrigger}
@@ -226,8 +227,9 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
                                 </button>
                             </div>
                             <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl overflow-hidden touch-none relative" style={{ height: 160 }}>
-                                <SignatureCanvas 
-                                    ref={sigCanvasTecnico} 
+                                {/* @ts-expect-error Ignorando el tipado estricto de Vercel para el ref de esta librería */}
+                                <SignatureCanvas
+                                    ref={sigCanvasTecnico}
                                     penColor="black"
                                     canvasProps={{ className: 'w-full h-full cursor-crosshair' }}
                                     onEnd={pullTrigger}
@@ -250,34 +252,34 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
                         </div>
                     )}
                     <div className="flex justify-end gap-3 w-full">
-                    <button
-                        onClick={onClose}
-                        disabled={isSubmitting}
-                        className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
-                    >
-                        Cancelar
-                    </button>
-                    <button
-                        onClick={handleConfirm}
-                        disabled={!checkEnabled() || isSubmitting || isLocating}
-                        className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-md disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        {isLocating ? (
-                            <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                📍 Obteniendo ubicación...
-                            </div>
-                        ) : isSubmitting ? (
-                            <div className="flex items-center gap-2">
-                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                Procesando...
-                            </div>
-                        ) : (
-                            <>
-                                <CheckCircle className="w-4 h-4" /> Proceder al Cierre y Generar Acta
-                            </>
-                        )}
-                    </button>
+                        <button
+                            onClick={onClose}
+                            disabled={isSubmitting}
+                            className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-bold hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={handleConfirm}
+                            disabled={!checkEnabled() || isSubmitting || isLocating}
+                            className="px-6 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-md disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {isLocating ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    📍 Obteniendo ubicación...
+                                </div>
+                            ) : isSubmitting ? (
+                                <div className="flex items-center gap-2">
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                    Procesando...
+                                </div>
+                            ) : (
+                                <>
+                                    <CheckCircle className="w-4 h-4" /> Proceder al Cierre y Generar Acta
+                                </>
+                            )}
+                        </button>
                     </div>
                 </div>
             </div>

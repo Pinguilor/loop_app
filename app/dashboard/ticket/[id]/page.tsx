@@ -116,6 +116,35 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
     
     const packingList = packingListRaw || [];
 
+    // Fetch child tickets
+    const { data: childTicketsRaw } = await supabase
+        .from('tickets')
+        .select('id, numero_ticket, titulo, estado')
+        .eq('ticket_padre_id', ticketId)
+        .order('fecha_creacion', { ascending: true });
+
+    const childTickets = childTicketsRaw || [];
+
+    // Fetch parent ticket if this is a child
+    let parentTicket = null;
+    if (ticket.ticket_padre_id) {
+        const { data: pt } = await supabase
+            .from('tickets')
+            .select('id, numero_ticket, titulo')
+            .eq('id', ticket.ticket_padre_id)
+            .maybeSingle();
+        parentTicket = pt || null;
+    }
+
+    // Fetch materiales asignados directamente (para PDF de cierre)
+    const { data: inventarioTicketRaw } = await supabase
+        .from('inventario')
+        .select('*, equipos:catalogo_equipos(*)')
+        .eq('ticket_id', ticketId);
+    console.log('DATA INVENTARIO PDF:', inventarioTicketRaw);
+    
+    const inventarioTicket = inventarioTicketRaw || [];
+
     return (
         <div className="py-6 w-full">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -127,10 +156,12 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                     <div className="flex-1 min-w-0">
                         <TicketTimeline
                             ticket={ticket}
+                            parentTicket={parentTicket}
                             messages={sortedMessages}
                             currentUserId={user.id}
                             isAgent={isAgent}
                             packingList={packingList}
+                            inventarioTicket={inventarioTicket}
                         />
                     </div>
 
@@ -143,6 +174,8 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                             agents={agents}
                             inventarioCentral={inventarioCentral}
                             packingList={packingList}
+                            inventarioTicket={inventarioTicket}
+                            childTickets={childTickets}
                         />
                     </div>
 

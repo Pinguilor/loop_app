@@ -3,7 +3,8 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Ticket } from '@/types/database.types';
-import { FileText, Image as ImageIcon, FileSpreadsheet, File, MessageSquare, Search, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { FileText, Image as ImageIcon, FileSpreadsheet, File, MessageSquare, Search, ChevronLeft, ChevronRight, User, CornerDownRight } from 'lucide-react';
+import Link from 'next/link';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -175,11 +176,25 @@ export function AdminTicketList({ initialTickets, currentAgentId }: Props) {
                                     className="hover:bg-gray-50 transition-colors cursor-pointer group"
                                 >
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-xs font-bold tracking-wider">
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-700 text-white text-xs font-semibold tracking-wide">NC-{ticket.numero_ticket}</span>
-                                        </div>
-                                        <div className="text-sm text-gray-500 mt-1 font-medium">
-                                            {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                        <div className="flex flex-col">
+                                            <div className="text-xs font-bold tracking-wider mb-1">
+                                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-700 text-white text-xs font-semibold tracking-wide shadow-sm">
+                                                    NC-{ticket.numero_ticket}
+                                                </span>
+                                            </div>
+                                            {ticket.ticket_padre_id && ticket.padre && (
+                                                <Link 
+                                                    href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mb-1 w-max"
+                                                >
+                                                    <CornerDownRight className="w-3 h-3 text-slate-400" />
+                                                    ↳ Adicional de NC-{ticket.padre.numero_ticket}
+                                                </Link>
+                                            )}
+                                            <div className="text-[11px] text-gray-500 font-medium">
+                                                {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                            </div>
                                         </div>
                                     </td>
 
@@ -277,10 +292,20 @@ export function AdminTicketList({ initialTickets, currentAgentId }: Props) {
                                         {ticket.profiles?.full_name?.charAt(0).toUpperCase() || <User className="w-4 h-4" />}
                                     </div>
                                     <div className="flex flex-col min-w-0">
-                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-700 text-white text-[10px] font-bold tracking-widest w-max mb-0.5">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-700 text-white text-[10px] font-bold tracking-widest w-max mb-0.5 shadow-sm">
                                             NC-{ticket.numero_ticket}
                                         </span>
-                                        <span className="text-xs font-bold text-gray-900 truncate">
+                                        {ticket.ticket_padre_id && ticket.padre && (
+                                            <Link 
+                                                href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="inline-flex items-center gap-1 text-[9px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mb-0.5 w-max"
+                                            >
+                                                <CornerDownRight className="w-3 h-3 text-slate-400" />
+                                                ↳ Adicional de NC-{ticket.padre.numero_ticket}
+                                            </Link>
+                                        )}
+                                        <span className="text-[11px] font-bold text-gray-900 truncate mt-0.5">
                                             {ticket.profiles?.full_name || 'Desconocido'}
                                         </span>
                                     </div>

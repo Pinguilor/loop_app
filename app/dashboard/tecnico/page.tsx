@@ -25,7 +25,13 @@ export default async function tecnicoDashboard() {
     // Fetch ONLY tickets assigned to this agent
     const { data: tickets, error } = await supabase
         .from('tickets')
-        .select('*, profiles:creado_por(full_name), restaurantes(nombre_restaurante), catalogo_servicios(categoria, subcategoria, elemento)')
+        .select(`
+            *, 
+            profiles:creado_por(full_name), 
+            restaurantes(nombre_restaurante), 
+            catalogo_servicios(categoria, subcategoria, elemento),
+            padre:ticket_padre_id(numero_ticket)
+        `)
         .eq('agente_asignado_id', user.id)
         .order('fecha_creacion', { ascending: false });
 

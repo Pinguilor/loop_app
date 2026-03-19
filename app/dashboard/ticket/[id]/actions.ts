@@ -424,12 +424,22 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
 
     if (originalItem.catalogo_equipos.es_serializado || originalItem.cantidad === cantidad) {
         // Mover todo
-        await supabase.from('inventario').update({ estado: 'En Tránsito', ticket_id: ticketId }).eq('id', originalItem.id);
+        const { error: moveError } = await supabase.from('inventario')
+            .update({ estado: 'En Tránsito', ticket_id: ticketId })
+            .eq('id', originalItem.id)
+            .select().single();
+            
+        if (moveError) return { error: 'Error moviendo inventario completo: ' + moveError.message };
     } else {
         // Split (Cables, etc)
-        await supabase.from('inventario').update({ cantidad: originalItem.cantidad - cantidad }).eq('id', originalItem.id);
+        const { error: updateError } = await supabase.from('inventario')
+            .update({ cantidad: originalItem.cantidad - cantidad })
+            .eq('id', originalItem.id)
+            .select().single();
+            
+        if (updateError) return { error: 'Error descontando inventario central: ' + updateError.message };
         
-        const { data: newItem } = await supabase.from('inventario').insert({
+        const { data: newItem, error: insertError } = await supabase.from('inventario').insert({
             bodega_id: originalItem.bodega_id,
             catalogo_id: originalItem.catalogo_id,
             estado: 'En Tránsito',
@@ -438,7 +448,8 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
             ticket_id: ticketId
         }).select().single();
 
-        if (newItem) newInventarioId = (newItem as any).id;
+        if (insertError || !newItem) return { error: 'Error creando nuevo lote asignado: ' + (insertError?.message || 'Lote no retornado') };
+        newInventarioId = (newItem as any).id;
     }
 
     // Create movimiento record
@@ -475,6 +486,90 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
 
     revalidatePath(`/dashboard/ticket/${ticketId}`);
     return { success: true };
+}
+
+export async function closeTicketWithActaAction(
+    ticketId: string,
+    notas: string,
+    firmaCliente: string,
+    firmaTecnico: string,
+    receptorNombre: string,
+    latitud: number,
+    longitud: number
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'No autorizado' };
+
+    try {
+        // 1. Actualización Principal (Tickets)
+        const { error: ticketError, data: updatedTicket } = await supabase.from('tickets').update({
+            estado: 'resuelto',
+            notas_cierre: notas,
+            firma_cliente: firmaCliente,
+            firma_tecnico: firmaTecnico,
+            receptor_nombre: receptorNombre,
+            latitud_cierre: latitud,
+            longitud_cierre: longitud,
+            fecha_resolucion: new Date().toISOString()
+        }).eq('id', ticketId).select().single();
+
+        if (ticketError || !updatedTicket) {
+            throw new Error(`Error actualizando el ticket: ${ticketError?.message || 'Ticket no encontrado o sin permisos'}`);
+        }
+
+        // Obtener bodega_id
+        const { data: ticketData, error: fetchError } = await supabase
+            .from('tickets')
+            .select('restaurante_id, restaurantes(bodega_id)')
+            .eq('id', ticketId)
+            .single();
+
+        if (fetchError) {
+            console.warn('No se pudo obtener el restaurante para logística:', fetchError);
+        }
+
+        // @ts-ignore
+        const restaurante = Array.isArray(ticketData?.restaurantes) ? ticketData?.restaurantes[0] : ticketData?.restaurantes;
+        const bodegaId = restaurante?.bodega_id;
+
+        // 2. Actualización Logística (Inventario)
+        if (bodegaId) {
+            const { error: invError } = await supabase.from('inventario')
+                .update({ 
+                    estado: 'operativo' as any, 
+                    bodega_id: bodegaId,
+                    ticket_id: ticketId // Garantizando persistencia férrea
+                })
+                .eq('ticket_id', ticketId)
+                .in('estado', ['en_transito', 'En Tránsito'])
+                .select();
+
+            if (invError) {
+                throw new Error(`Error en actualización logística: ${invError.message}`);
+            }
+        }
+
+        // 3. Historial (Timeline)
+        const { error: msgError } = await supabase.from('ticket_messages').insert({
+            ticket_id: ticketId,
+            sender_id: user.id,
+            mensaje: 'Se ha cerrado el ticket y firmado la Orden de Servicio Digital.',
+            es_sistema: true
+        });
+
+        if (msgError) {
+            throw new Error(`Error insertando mensaje en el historial: ${msgError.message}`);
+        }
+
+        // 4. Revalidación
+        revalidatePath(`/dashboard/ticket/${ticketId}`);
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('Error crítico en closeTicketWithActaAction:', error);
+        return { error: error.message || 'Ocurrió un error inesperado al cerrar el ticket.' };
+    }
 }
 
 export async function smartCloseAction(formData: FormData) {
@@ -725,4 +820,94 @@ export async function smartCloseAction(formData: FormData) {
         console.error(error);
         return { error: error.message || 'Error interno durante la transacción de logística inversa.' };
     }
+}
+
+export async function createChildTicketAction(formData: FormData) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+        return { error: 'No estás autenticado.' };
+    }
+
+    // Role check - Solo los agentes / admins pueden sumar ticket adicional desde el dashboard del agente?
+    // Aunque si el botón solo sale a los técnicos, esto está bien
+    const ticketPadreId = formData.get('ticketPadreId') as string;
+    const titulo = formData.get('titulo') as string;
+    const descripcion = formData.get('descripcion') as string;
+    const prioridad = formData.get('prioridad') as 'baja' | 'media' | 'alta' | 'crítica';
+    const catalogo_servicio_id = formData.get('catalogo_servicio_id') as string;
+
+    if (!ticketPadreId || !titulo || !descripcion || !prioridad || !catalogo_servicio_id) {
+        return { error: 'Por favor completa todos los campos requeridos.' };
+    }
+
+    // Get parent ticket info
+    const { data: parentTicket, error: parentError } = await supabase
+        .from('tickets')
+        .select('restaurante_id, catalogo_servicio_id, zona_id, creado_por, numero_ticket')
+        .eq('id', ticketPadreId)
+        .single();
+
+    if (parentError || !parentTicket) {
+        return { error: 'El ticket padre no existe o no tienes permisos.' };
+    }
+
+    const getSLAHours = (p: string) => {
+        switch (p) {
+            case 'crítica': return 4;
+            case 'alta': return 24;
+            case 'media': return 48;
+            case 'baja': return 72;
+            default: return 72;
+        }
+    };
+    const vencimiento_sla = new Date(Date.now() + getSLAHours(prioridad) * 60 * 60 * 1000).toISOString();
+
+    const newTicketId = crypto.randomUUID();
+
+    const { error: insertError } = await supabase
+        .from('tickets')
+        .insert({
+            id: newTicketId,
+            ticket_padre_id: ticketPadreId,
+            titulo: titulo,
+            descripcion: descripcion,
+            prioridad: prioridad,
+            restaurante_id: parentTicket.restaurante_id,
+            catalogo_servicio_id: catalogo_servicio_id, 
+            zona_id: parentTicket.zona_id, 
+            estado: 'abierto', 
+            agente_asignado_id: user.id, 
+            creado_por: parentTicket.creado_por, 
+            vencimiento_sla: vencimiento_sla,
+        });
+
+    if (insertError) {
+        console.error('Error creating child ticket:', insertError);
+        return { error: `Error creando ticket hijo: ${insertError.message}` };
+    }
+
+    await supabase.from('ticket_messages').insert({
+        ticket_id: ticketPadreId,
+        sender_id: user.id,
+        mensaje: `<div class="bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold px-3 py-2 rounded-lg">Se ha creado un Ticket Adicional a partir de este.</div>`,
+        es_sistema: true
+    });
+
+    const { data: agents } = await supabase.from('profiles').select('id').eq('rol', 'tecnico');
+    if (agents && agents.length > 0) {
+        const notifications = agents.map(agent => ({
+            user_id: agent.id,
+            ticket_id: newTicketId,
+            mensaje: `Nuevo ticket adicional ingresado desprendido de NC-${parentTicket.numero_ticket}`,
+            leida: false
+        }));
+        await supabase.from('notifications').insert(notifications);
+    }
+
+    revalidatePath(`/dashboard/ticket/${ticketPadreId}`);
+    revalidatePath(`/dashboard/ticket/${newTicketId}`);
+    revalidatePath('/dashboard/agente');
+    return { success: true, newTicketId };
 }

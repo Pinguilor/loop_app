@@ -4,7 +4,8 @@ import { createClient } from '@/lib/supabase/client';
 import { Ticket } from '@/types/database.types';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { MessageSquare, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
+import { MessageSquare, Search, ChevronLeft, ChevronRight, CornerDownRight } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -34,7 +35,12 @@ export default function TicketList({ limit }: { limit?: number }) {
 
             const { data, error } = await supabase
                 .from('tickets')
-                .select('*, restaurantes(nombre_restaurante), catalogo_servicios(categoria, subcategoria, elemento)')
+                .select(`
+                    *, 
+                    restaurantes(nombre_restaurante), 
+                    catalogo_servicios(categoria, subcategoria, elemento),
+                    padre:ticket_padre_id(numero_ticket)
+                `)
                 .eq('creado_por', user.id)
                 .order('fecha_creacion', { ascending: false });
 
@@ -181,11 +187,25 @@ export default function TicketList({ limit }: { limit?: number }) {
                                     className="hover:bg-slate-50 transition-colors cursor-pointer group"
                                 >
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="text-xs font-bold tracking-wider mb-1">
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-700 text-white text-xs font-semibold tracking-wide">NC-{ticket.numero_ticket}</span>
-                                        </div>
-                                        <div className="text-sm text-gray-500 font-medium">
-                                            {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                        <div className="flex flex-col">
+                                            <div className="text-xs font-bold tracking-wider mb-1">
+                                                <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-700 text-white text-xs font-semibold tracking-wide shadow-sm">
+                                                    NC-{ticket.numero_ticket}
+                                                </span>
+                                            </div>
+                                            {ticket.ticket_padre_id && ticket.padre && (
+                                                <Link 
+                                                    href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mb-1 w-max"
+                                                >
+                                                    <CornerDownRight className="w-3 h-3 text-slate-400" />
+                                                    ↳ Adicional de NC-{ticket.padre.numero_ticket}
+                                                </Link>
+                                            )}
+                                            <div className="text-[11px] text-gray-500 font-medium">
+                                                {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                            </div>
                                         </div>
                                     </td>
 
@@ -251,13 +271,25 @@ export default function TicketList({ limit }: { limit?: number }) {
                         >
                             {/* Fila 1: ID, Fecha y Prioridad */}
                             <div className="flex justify-between items-center">
-                                <div className="flex items-center gap-2">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-700 text-white text-xs font-bold tracking-wide">
-                                        NC-{ticket.numero_ticket}
-                                    </span>
-                                    <span className="text-xs text-slate-500 font-medium">
-                                        {new Date(ticket.fecha_creacion).toLocaleDateString()}
-                                    </span>
+                                <div className="flex flex-col items-start">
+                                    <div className="flex items-center gap-2">
+                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-700 text-white text-xs font-bold tracking-wide">
+                                            NC-{ticket.numero_ticket}
+                                        </span>
+                                        <span className="text-xs text-slate-500 font-medium">
+                                            {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    {ticket.ticket_padre_id && ticket.padre && (
+                                        <Link 
+                                            href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mt-1 w-max"
+                                        >
+                                            <CornerDownRight className="w-3 h-3 text-slate-400" />
+                                            ↳ Adicional de NC-{ticket.padre.numero_ticket}
+                                        </Link>
+                                    )}
                                 </div>
                                 {getPriorityBadge(ticket.prioridad)}
                             </div>

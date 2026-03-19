@@ -2,10 +2,14 @@
 
 import { useState } from 'react';
 import { updateTicketPropertiesAction, assignTicketToMeAction } from '../actions';
-import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, Activity, Flag, UserPlus, Calendar } from 'lucide-react';
+import Link from 'next/link';
+import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers } from 'lucide-react';
 import { TicketStatus } from '@/types/database.types';
 import SlaTimer from '@/components/SlaTimer';
 import { AssignMaterialModal } from './AssignMaterialModal';
+import { AddChildTicketModal } from './AddChildTicketModal';
+import { CloseTicketModal } from './CloseTicketModal';
+import { closeTicketWithActaAction } from '../actions';
 
 interface Props {
     ticket: any;
@@ -14,11 +18,16 @@ interface Props {
     agents?: any[];
     inventarioCentral?: any[];
     packingList?: any[];
+    inventarioTicket?: any[];
+    childTickets?: any[];
 }
 
-export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], inventarioCentral = [], packingList = [] }: Props) {
+export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], inventarioCentral = [], packingList = [], inventarioTicket = [], childTickets = [] }: Props) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [showMaterialModal, setShowMaterialModal] = useState(false);
+    const [showChildTicketModal, setShowChildTicketModal] = useState(false);
+    const [showCloseModal, setShowCloseModal] = useState(false);
+    const [childrenOpen, setChildrenOpen] = useState(false);
 
     // Hardcode possible states to make rendering easier
     const statuses: { id: TicketStatus, label: string, color: string, icon: any }[] = [
@@ -151,9 +160,33 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
 
                 {/* STATUS SECTION */}
                 <div className="p-5 border-b border-gray-50">
+                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' && (
+                        <>
+                            <button
+                                onClick={() => setShowCloseModal(true)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl shadow-md transition-all mb-4"
+                            >
+                                <CheckCircle2 className="w-5 h-5" /> Generar Acta y Cerrar
+                            </button>
+                            <CloseTicketModal
+                                isOpen={showCloseModal}
+                                onClose={() => setShowCloseModal(false)}
+                                ticket={ticket}
+                                materiales={inventarioTicket}
+                                onConfirm={async (notas, firmaCliente, firmaTecnico, receptorNombre, latitud, longitud) => {
+                                    setIsUpdating(true);
+                                    const result = await closeTicketWithActaAction(ticket.id, notas, firmaCliente, firmaTecnico, receptorNombre, latitud, longitud);
+                                    setIsUpdating(false);
+                                    if (result.error) alert(result.error);
+                                    else setShowCloseModal(false);
+                                }}
+                            />
+                        </>
+                    )}
+
                     <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Estado del Ticket</span>
 
-                    {isAgent && ticket.estado !== 'cerrado' ? (
+                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' ? (
                         <div className="relative">
                             <button
                                 onClick={() => { setStatusOpen(!statusOpen); setPriorityOpen(false); }}
@@ -322,13 +355,78 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                         </div>
                     </div>
                 )}
+
+                {/* TICKETS ADICIONALES (HIJOS) SECTION */}
+                {childTickets.length > 0 && (
+                    <div className="border-b border-gray-50 flex flex-col">
+                        <button 
+                            onClick={() => setChildrenOpen(!childrenOpen)}
+                            className="w-full p-5 flex items-center justify-between hover:bg-gray-50 transition-colors group"
+                        >
+                            <div className="flex items-center gap-2">
+                                <Layers className="w-4 h-4 text-indigo-500" />
+                                <span className="text-xs font-semibold text-slate-800 uppercase tracking-wider">Tickets Adicionales ({childTickets.length})</span>
+                            </div>
+                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${childrenOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        
+                        {childrenOpen && (
+                            <div className="px-5 pb-5 pt-0 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {childTickets.map((child: any) => {
+                                    const cStatus = statuses.find(s => s.id === child.estado) || statuses[0];
+                                    const StatusIcon = cStatus.icon;
+                                    return (
+                                        <Link 
+                                            key={child.id} 
+                                            href={`/dashboard/ticket/${child.id}`}
+                                            className="block p-3 bg-slate-50 border border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-white transition-colors group"
+                                        >
+                                            <div className="flex justify-between items-start mb-1.5">
+                                                <span className="text-xs font-black text-indigo-700 uppercase tracking-widest">
+                                                    NC-{child.numero_ticket}
+                                                </span>
+                                                <div className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${cStatus.color}`}>
+                                                    <StatusIcon className="w-3 h-3" />
+                                                    {cStatus.label}
+                                                </div>
+                                            </div>
+                                            <span className="text-sm font-semibold text-slate-700 line-clamp-2 leading-tight group-hover:text-indigo-900 transition-colors">
+                                                {child.titulo}
+                                            </span>
+                                        </Link>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
+
+            {/* ACTION SECTION - ADD CHILD TICKET */}
+            {isAgent && (
+                <div className="p-4 bg-white border-t border-slate-200">
+                    <button 
+                        onClick={() => setShowChildTicketModal(true)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 text-sm font-bold shadow-sm hover:bg-indigo-100 transition-colors"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Sumar Ticket Adicional
+                    </button>
+                </div>
+            )}
 
             {showMaterialModal && isAdmin && (
                 <AssignMaterialModal 
                     ticketId={ticket.id} 
                     onClose={() => setShowMaterialModal(false)} 
                     inventarioCentral={inventarioCentral} 
+                />
+            )}
+
+            {showChildTicketModal && isAgent && (
+                <AddChildTicketModal 
+                    ticketPadreId={ticket.id}
+                    onClose={() => setShowChildTicketModal(false)}
                 />
             )}
         </div>

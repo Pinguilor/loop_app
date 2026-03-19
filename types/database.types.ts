@@ -51,6 +51,12 @@ export interface TicketInsert {
   catalogo_servicio_id: string; // References catalogo_servicios
   zona_id: string; // References zonas
   fecha_programada?: string | null; // Timestamp for scheduled visit
+  ticket_padre_id?: string | null;
+  sufijo_hijo?: string | null;
+  notas_cierre?: string | null;
+  firma_cliente?: string | null;
+  firma_tecnico?: string | null;
+  receptor_nombre?: string | null;
 }
 
 export interface Ticket extends TicketInsert {
@@ -74,6 +80,10 @@ export interface Ticket extends TicketInsert {
   feedback_cliente?: string | null;
   catalogo_servicios?: CatalogoServicio | null;
   zona?: Zona | null;
+  padre?: {
+    numero_ticket: number;
+    titulo?: string;
+  } | null;
 }
 
 export interface TicketMessageInsert {

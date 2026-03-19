@@ -1,12 +1,15 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction } from '../actions';
 import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SmartCloseModal } from './SmartCloseModal';
+import { ActaCierrePDF } from './ActaCierrePDF';
 import 'react-quill-new/dist/quill.snow.css';
+
+const PDFDownloadLink = dynamic(() => import('@react-pdf/renderer').then(mod => mod.PDFDownloadLink), { ssr: false });
 
 const ReactQuill = dynamic(() => import('react-quill-new'), {
     ssr: false,
@@ -30,9 +33,11 @@ interface Props {
     currentUserId: string;
     isAgent?: boolean;
     packingList?: any[];
+    inventarioTicket?: any[];
+    parentTicket?: { id: string; numero_ticket: number; titulo: string } | null;
 }
 
-export default function TicketTimeline({ ticket, messages, currentUserId, isAgent, packingList = [] }: Props) {
+export default function TicketTimeline({ ticket, messages, currentUserId, isAgent, packingList = [], inventarioTicket = [], parentTicket = null }: Props) {
     const router = useRouter();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [newMessage, setNewMessage] = useState('');
@@ -148,6 +153,18 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                 {/* HEADER OPTIMIZADO PARA MÓVIL Y DESCRIPCIÓN */}
                 <div className="p-4 sm:p-6 border-b border-gray-100 bg-white">
+                    {parentTicket && (
+                        <div className="mb-4">
+                            <button
+                                onClick={() => router.push(`/dashboard/ticket/${parentTicket.id}`)}
+                                className="inline-flex items-center gap-2 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors shadow-sm"
+                            >
+                                <ChevronsRight className="w-4 h-4 rotate-180" />
+                                Ticket Adicional - Derivado de NC-{parentTicket.numero_ticket}
+                            </button>
+                        </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-5">
                         <div className="flex items-center gap-3">
                             <div className="h-12 w-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0 shadow-sm border border-indigo-200">
@@ -220,9 +237,28 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                 {/* CAJA DE RESPUESTA */}
                 <div className="p-4 bg-slate-50 border-b border-t border-slate-200 shrink-0">
-                    {ticket.estado === 'cerrado' ? (
-                        <div className="bg-gray-50 text-center py-4 rounded-xl border border-gray-200 text-slate-500 font-medium text-sm">
-                            Este ticket ha sido cerrado. Ya no admite respuestas.
+                    {ticket.estado === 'cerrado' || ticket.estado === 'resuelto' ? (
+                        <div className="flex flex-col gap-3">
+                            {ticket.firma_cliente && (
+                                <div className="p-4 border border-indigo-100 bg-indigo-50/50 rounded-xl flex sm:flex-row flex-col items-center justify-between gap-3">
+                                    <div className="text-center sm:text-left">
+                                        <h4 className="text-sm font-bold text-slate-800">Orden de Servicio Finalizada</h4>
+                                        <p className="text-xs text-slate-500">El trabajo y firmas fueron registrados.</p>
+                                    </div>
+                                    <PDFDownloadLink
+                                        key={ticket.estado + (ticket.receptor_nombre || '') + (inventarioTicket?.length || 0)}
+                                        document={<ActaCierrePDF ticket={ticket} materiales={inventarioTicket} notas={ticket.notas_cierre || ''} firmaClienteUrl={ticket.firma_cliente} firmaTecnicoUrl={ticket.firma_tecnico || ''} agenteNombre={ticket.agente?.full_name || 'Técnico'} />}
+                                        fileName={`Acta_Servicio_NC-${ticket.numero_ticket}.pdf`}
+                                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-lg shadow-sm transition-colors"
+                                    >
+                                        {/* @ts-ignore */}
+                                        {({ loading }) => (loading ? '⏳ Generando...' : '📄 Descargar Acta PDF')}
+                                    </PDFDownloadLink>
+                                </div>
+                            )}
+                            <div className="bg-gray-50 text-center py-4 rounded-xl border border-gray-200 text-slate-500 font-medium text-sm">
+                                Este ticket ha sido cerrado/resuelto. Ya no admite respuestas.
+                            </div>
                         </div>
                     ) : (
                         <form onSubmit={(e) => handleSendMessage(e, false)} className="relative flex flex-col gap-2">

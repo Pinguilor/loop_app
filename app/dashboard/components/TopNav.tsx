@@ -174,7 +174,7 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
     const displayInitial = userFullName ? userFullName.charAt(0).toUpperCase() : <User className="w-4 h-4" />;
 
     return (
-        <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-brand-secondary to-brand-primary shadow-sm transition-all">
+        <header className="sticky top-0 z-40 w-full bg-gradient-to-r from-[#0e3187] to-[#222727] shadow-sm transition-all">
             {/* Contenedor relativo para poder clavar el logo en el centro absoluto */}
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
                 <div className="flex justify-between items-center h-16">

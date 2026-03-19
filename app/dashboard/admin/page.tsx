@@ -23,7 +23,13 @@ export default async function AdminDashboard() {
     // Fetch ALL tickets for Admin
     const { data: tickets, error } = await supabase
         .from('tickets')
-        .select('*, profiles:creado_por(full_name), restaurantes(nombre_restaurante), catalogo_servicios(categoria, subcategoria, elemento)')
+        .select(`
+            *, 
+            profiles:creado_por(full_name), 
+            restaurantes(nombre_restaurante), 
+            catalogo_servicios(categoria, subcategoria, elemento),
+            padre:ticket_padre_id(numero_ticket)
+        `)
         .order('fecha_creacion', { ascending: false });
 
     if (error) {

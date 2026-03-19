@@ -54,6 +54,11 @@ export async function middleware(request: NextRequest) {
             return supabaseResponse;
         }
 
+        // Shared route bypass: Permitir acceso a Analíticas y Perfil a cualquier usuario autenticado
+        if (url.pathname.startsWith('/dashboard/analiticas') || url.pathname.startsWith('/dashboard/perfil')) {
+            return supabaseResponse;
+        }
+
         // Role Boundaries
         if (rol === 'coordinador') {
             if (url.pathname.startsWith('/dashboard/admin/bodegas')) {

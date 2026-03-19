@@ -25,7 +25,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
 
     // Fetch the Ticket
     // We get the ticket itself, the requester's profile, and all messages with their respective sender profiles
-    const { data: ticket, error: ticketError } = await supabase
+    let query = supabase
         .from('tickets')
         .select(`
             *,
@@ -40,11 +40,17 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                 sender_id,
                 adjuntos,
                 es_sistema,
+                es_interno,
                 profiles:sender_id (full_name, rol)
             )
         `)
-        .eq('id', ticketId)
-        .maybeSingle();
+        .eq('id', ticketId);
+
+    if (!isAgent && !isAdmin) {
+        query = query.neq('ticket_messages.es_interno', true);
+    }
+
+    const { data: ticket, error: ticketError } = await query.maybeSingle();
 
     if (ticketError) {
         console.error('--------------------------------');
@@ -160,6 +166,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                             messages={sortedMessages}
                             currentUserId={user.id}
                             isAgent={isAgent}
+                            isAdmin={isAdmin}
                             packingList={packingList}
                             inventarioTicket={inventarioTicket}
                         />

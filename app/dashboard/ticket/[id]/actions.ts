@@ -25,6 +25,7 @@ export async function addTicketMessageAction(formData: FormData) {
     const ticketId = formData.get('ticketId') as string;
     const message = formData.get('message') as string;
     const resolveTicket = formData.get('resolveTicket') === 'true';
+    const esInterno = formData.get('esInterno') === 'true';
     const rawMessyText = message.replace(/(<([^>]+)>)/gi, "").trim();
     const adjuntos = formData.getAll('adjuntos') as File[];
 
@@ -74,6 +75,7 @@ export async function addTicketMessageAction(formData: FormData) {
             sender_id: user.id,
             mensaje: message,
             adjuntos: fileUrls.length > 0 ? fileUrls : null,
+            es_interno: esInterno,
         });
 
     if (error) {
@@ -481,7 +483,8 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
         ticket_id: ticketId,
         sender_id: user.id,
         mensaje: msgHtml,
-        es_sistema: false
+        es_sistema: false,
+        es_interno: true
     });
 
     revalidatePath(`/dashboard/ticket/${ticketId}`);

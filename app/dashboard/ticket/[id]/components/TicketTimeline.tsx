@@ -32,12 +32,13 @@ interface Props {
     messages: any[];
     currentUserId: string;
     isAgent?: boolean;
+    isAdmin?: boolean;
     packingList?: any[];
     inventarioTicket?: any[];
     parentTicket?: { id: string; numero_ticket: number; titulo: string } | null;
 }
 
-export default function TicketTimeline({ ticket, messages, currentUserId, isAgent, packingList = [], inventarioTicket = [], parentTicket = null }: Props) {
+export default function TicketTimeline({ ticket, messages, currentUserId, isAgent, isAdmin, packingList = [], inventarioTicket = [], parentTicket = null }: Props) {
     const router = useRouter();
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [newMessage, setNewMessage] = useState('');
@@ -47,6 +48,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
     const [showVisitPopover, setShowVisitPopover] = useState(false);
     const [visitDate, setVisitDate] = useState('');
     const [copied, setCopied] = useState(false);
+    const [isInternalNote, setIsInternalNote] = useState(false);
 
     // Smart Close logic
     const [showSmartClose, setShowSmartClose] = useState(false);
@@ -71,6 +73,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
             formData.append('ticketId', ticket.id);
             formData.append('message', newMessage);
             formData.append('resolveTicket', resolveTicket ? 'true' : 'false');
+            formData.append('esInterno', isInternalNote ? 'true' : 'false');
             selectedFiles.forEach(file => {
                 formData.append('adjuntos', file);
             });
@@ -81,6 +84,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
             } else {
                 setNewMessage('');
                 setSelectedFiles([]);
+                setIsInternalNote(false);
             }
         } catch (error) {
             console.error('Failed to send message:', error);
@@ -209,7 +213,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                     )}
 
                     <div className="relative mt-6">
-                        <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.15em] z-10">
+                        <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.15em]">
                             Detalles de la Solicitud
                         </span>
                         <div
@@ -247,7 +251,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                             <span>El trabajo y firmas fueron registrados.</span>
                                             {ticket.latitud_cierre && ticket.longitud_cierre && (
                                                 <a
-                                                    href={`https://www.google.com/url?sa=E&source=gmail&q=https://www.google.com/maps?q=${ticket.latitud_cierre},${ticket.longitud_cierre}`}
+                                                    href={`https://www.google.com/maps?q=${ticket.latitud_cierre},${ticket.longitud_cierre}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100/80 hover:bg-emerald-200 text-emerald-700 border border-emerald-200/60 rounded text-[10px] font-bold uppercase tracking-widest transition-colors w-max mx-auto sm:mx-0"
@@ -307,16 +311,30 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 />
 
                                 <div className="flex justify-between items-center bg-slate-50 p-2 border-t border-slate-200 h-16 shrink-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="ml-4 flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-300 bg-gray-100"
-                                    >
-                                        <Paperclip className="w-4 h-4" />
-                                        <span className="hidden sm:inline">Adjuntar</span>
-                                    </button>
+                                    <div className="flex items-center gap-4 ml-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-300 bg-gray-100"
+                                        >
+                                            <Paperclip className="w-4 h-4" />
+                                            <span className="hidden sm:inline">Adjuntar</span>
+                                        </button>
 
-                                    <div className="mr-4 flex items-center h-10 relative">
+                                        {(isAgent || isAdmin) && (
+                                            <label className="flex items-center gap-2 cursor-pointer select-none group px-2 py-1.5 rounded hover:bg-white transition-colors">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isInternalNote}
+                                                    onChange={(e) => setIsInternalNote(e.target.checked)}
+                                                    className="w-4 h-4 rounded text-orange-500 focus:ring-orange-500 border-gray-300"
+                                                />
+                                                <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">🔒 Nota Interna <span className="font-normal text-slate-400 hidden lg:inline">(Solo equipo Systel)</span></span>
+                                            </label>
+                                        )}
+                                    </div>
+
+                                    <div className="mr-4 flex flex-1 sm:flex-none justify-end md:justify-start items-center h-10 relative">
                                         <button
                                             type="submit"
                                             disabled={(!newMessage.replace(/(<([^>]+)>)/gi, "").trim() && selectedFiles.length === 0) || isSubmitting}
@@ -339,17 +357,6 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                     <>
                                                         <div className="fixed inset-0 z-30" onClick={() => setIsSplitOpen(false)}></div>
                                                         <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1 z-40">
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.preventDefault();
-                                                                    setIsSplitOpen(false);
-                                                                    setShowSmartClose(true);
-                                                                }}
-                                                                className="w-full text-left px-4 py-3 text-sm font-bold text-emerald-700 hover:bg-emerald-50 flex items-center gap-2 transition-colors border-b border-gray-100"
-                                                            >
-                                                                <CheckCircle2 className="w-5 h-5" /> Cierre Inteligente
-                                                            </button>
                                                             <button type="button" onClick={() => { setIsSplitOpen(false); setShowVisitPopover(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors">
                                                                 <Calendar className="w-5 h-5" /> Responder y Programar Visita
                                                             </button>
@@ -439,8 +446,13 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                         <div className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm ${isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
                                             {msg.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
                                         </div>
-                                        <div className="flex-1 bg-white border border-gray-200 rounded-xl p-5 shadow-sm relative">
-                                            <div className="absolute top-4 right-4 text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-md">#{commentCounter}</div>
+                                        <div className={`flex-1 border rounded-xl p-5 shadow-sm relative ${msg.es_interno ? 'bg-amber-50 border-yellow-300' : 'bg-white border-gray-200'}`}>
+                                            {msg.es_interno && (
+                                                <div className="absolute -top-3 left-4 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-widest flex items-center gap-1  border border-orange-600">
+                                                    🔒 INTERNO
+                                                </div>
+                                            )}
+                                            <div className={`absolute top-4 right-4 text-xs font-bold px-2 py-1 rounded-md ${msg.es_interno ? 'bg-yellow-200/50 text-yellow-700' : 'text-slate-400 bg-slate-100'}`}>#{commentCounter}</div>
                                             <div className="flex justify-between items-center mb-3 pr-12">
                                                 <div className="flex items-center gap-2">
                                                     <span className="font-bold text-gray-900 text-sm">{msg.profiles?.full_name || 'Usuario desconocido'}</span>

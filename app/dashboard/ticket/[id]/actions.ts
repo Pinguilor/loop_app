@@ -891,10 +891,14 @@ export async function createChildTicketAction(formData: FormData) {
         return { error: `Error creando ticket hijo: ${insertError.message}` };
     }
 
+    // We extract the generated numero_ticket
+    const { data: insertedTicket } = await supabase.from('tickets').select('numero_ticket').eq('id', newTicketId).single();
+
     await supabase.from('ticket_messages').insert({
         ticket_id: ticketPadreId,
         sender_id: user.id,
-        mensaje: `<div class="bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold px-3 py-2 rounded-lg">Se ha creado un Ticket Adicional a partir de este.</div>`,
+        mensaje: JSON.stringify({ childId: newTicketId, childNum: insertedTicket?.numero_ticket || '...' }),
+        tipo_evento: 'ticket_hijo',
         es_sistema: true
     });
 
@@ -913,4 +917,178 @@ export async function createChildTicketAction(formData: FormData) {
     revalidatePath(`/dashboard/ticket/${newTicketId}`);
     revalidatePath('/dashboard/agente');
     return { success: true, newTicketId };
+}
+
+export async function anularTicketAction(ticketId: string, motivo: string) {
+    try {
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            return { error: 'No estás autenticado.' };
+        }
+
+        // Role check
+        const { data: profile } = await supabase.from('profiles').select('rol, full_name').eq('id', user.id).maybeSingle();
+        const userRole = profile?.rol?.toLowerCase() || 'usuario';
+        const isSuperUser = userRole === 'admin' || userRole === 'coordinador' || userRole === 'supervisor';
+
+        // Obtener info del ticket
+        const { data: ticket, error: ticketError } = await supabase
+            .from('tickets')
+            .select('estado, creado_por, fecha_creacion, id, numero_ticket')
+            .eq('id', ticketId)
+            .single();
+
+        if (ticketError || !ticket) {
+            console.error('Error detallado buscando ticket:', ticketError);
+            return { error: `Ticket no encontrado (Error BD: ${ticketError?.message})` };
+        }
+
+        if (ticket.estado === 'anulado' || ticket.estado === 'cerrado' || ticket.estado === 'resuelto') {
+            return { error: `Este ticket no puede ser anulado en su estado actual: ${ticket.estado}` };
+        }
+
+        if (!isSuperUser) {
+            // Validar propiedad de ticket
+            if (ticket.creado_por !== user.id) {
+                return { error: 'Solo el creador original o un administrador puede anular este ticket.' };
+            }
+
+            // Validar regla de 2 horas
+            const createdAt = new Date(ticket.fecha_creacion).getTime();
+            const now = new Date().getTime();
+            const diffHours = (now - createdAt) / (1000 * 60 * 60);
+
+            if (diffHours > 2) {
+                return { error: 'El ticket solo puede ser anulado dentro de las primeras 2 horas desde su creación.' };
+            }
+        }
+
+        console.log('--- EMPEZANDO ANULACIÓN DE TICKET ---');
+
+        // 1. Cambiar estado a Anulado
+        const { error: updateError } = await supabase
+            .from('tickets')
+            .update({ estado: 'anulado' as any })
+            .eq('id', ticketId);
+
+        if (updateError) {
+            console.error('Error detallado anulando ticket:', updateError);
+            return { error: `Error BD al actualizar estado a anulado: ${updateError.message}` };
+        }
+
+        // 2. Efecto Dominó: liberar inventario reservado (estado 'En Tránsito') a 'Disponible'
+        const { data: inventarioTransito, error: invTransitoError } = await supabase
+            .from('inventario')
+            .select('id, bodega_id, estado, cantidad')
+            .eq('ticket_id', ticketId)
+            .in('estado', ['En Tránsito', 'en_transito', 'En transito']);
+
+        if (invTransitoError) {
+            console.error('Error detallado buscando inventario en tránsito:', invTransitoError);
+            throw new Error(`Error BD buscando inventario: ${invTransitoError.message}`);
+        }
+
+        if (inventarioTransito && inventarioTransito.length > 0) {
+            const idsALiberar = inventarioTransito.map(inv => inv.id);
+            const { error: invUpdateError } = await supabase
+                .from('inventario')
+                .update({
+                    estado: 'Disponible',
+                    ticket_id: null
+                })
+                .in('id', idsALiberar);
+
+            if (invUpdateError) {
+                console.error('Error detallado al liberar inventario del ticket anulado:', invUpdateError);
+                throw new Error(`Error BD liberando inventario: ${invUpdateError.message}`);
+            } else {
+                // crear movimientos_inventario para reflejar devolución
+                for (const item of inventarioTransito) {
+                    const { error: movError } = await supabase.from('movimientos_inventario').insert({
+                        inventario_id: item.id,
+                        ticket_id: ticketId,
+                        bodega_origen_id: item.bodega_id,
+                        bodega_destino_id: item.bodega_id,
+                        cantidad: item.cantidad,
+                        fecha_movimiento: new Date().toISOString(),
+                        realizado_por: user.id
+                    });
+                    if (movError) {
+                        console.error('Error detallado insertando movimiento inventario en anulación:', movError);
+                    }
+                }
+            }
+        }
+
+        // 3. Inserción en ticket_messages
+        const { error: msgError } = await supabase.from('ticket_messages').insert({
+            ticket_id: ticketId,
+            sender_id: user.id,
+            mensaje: motivo,
+            es_sistema: false,
+            tipo_evento: 'anulacion'
+        });
+
+        if (msgError) {
+            console.error('Error detallado insertando mensaje de anulación:', msgError);
+            throw new Error(`Error BD insertando mensaje de anulación: ${msgError.message}`);
+        }
+
+        revalidatePath(`/dashboard/ticket/${ticketId}`);
+        revalidatePath('/dashboard/ticket/[id]', 'page');
+        revalidatePath('/dashboard/solicitante');
+        revalidatePath('/dashboard/agente');
+
+        console.log('✅ Ticket anulado exitosamente.');
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('--- ERROR CRÍTICO EN ANULACIÓN DE TICKET ---');
+        console.error('Error detallado:', error);
+        return { success: false, error: error.message || 'Error interno inesperado al anular.' };
+    }
+}
+
+export async function updateChildTicketDescription(childTicketId: string, nuevaDescripcion: string) {
+    try {
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+        if (authError || !user) {
+            return { error: 'No estás autenticado.' };
+        }
+
+        const { data: profile } = await supabase.from('profiles').select('rol, full_name').eq('id', user.id).maybeSingle();
+        const userRole = profile?.rol?.toLowerCase() || 'usuario';
+
+        if (userRole !== 'tecnico' && userRole !== 'admin' && userRole !== 'supervisor' && userRole !== 'coordinador') {
+            return { error: 'No tienes permisos para editar la descripción de un ticket.' };
+        }
+
+        const { error: updateError } = await supabase
+            .from('tickets')
+            .update({ 
+                descripcion: nuevaDescripcion,
+                descripcion_editada: true,
+                modificado_por: profile?.full_name || 'Técnico',
+                fecha_modificacion: new Date().toISOString()
+            })
+            .eq('id', childTicketId);
+
+        if (updateError) {
+            console.error('Error detallado actualizando descripción:', updateError);
+            return { error: `Error de BD: ${updateError.message}` };
+        }
+
+        revalidatePath(`/dashboard/ticket/[id]`, 'page');
+        
+        return { success: true };
+
+    } catch (error: any) {
+        console.error('--- ERROR CRÍTICO ACTUALIZANDO DESCRIPCIÓN ---');
+        console.error(error);
+        return { success: false, error: error.message || 'Error interno al actualizar.' };
+    }
 }

@@ -41,6 +41,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                 adjuntos,
                 es_sistema,
                 es_interno,
+                tipo_evento,
                 profiles:sender_id (full_name, rol)
             )
         `)
@@ -125,7 +126,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
     // Fetch child tickets
     const { data: childTicketsRaw } = await supabase
         .from('tickets')
-        .select('id, numero_ticket, titulo, estado')
+        .select('id, numero_ticket, titulo, estado, descripcion, descripcion_editada')
         .eq('ticket_padre_id', ticketId)
         .order('fecha_creacion', { ascending: true });
 

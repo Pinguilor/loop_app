@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction } from '../actions';
-import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar } from 'lucide-react';
+import Link from 'next/link';
+import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction, updateChildTicketDescription } from '../actions';
+import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar, AlertTriangle, Pencil, Link2 } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SmartCloseModal } from './SmartCloseModal';
 import { ActaCierrePDF } from './ActaCierrePDF';
+import { AnularTicketModal } from './AnularTicketModal';
 import 'react-quill-new/dist/quill.snow.css';
 
 const PDFDownloadLink = dynamic(() => import('@react-pdf/renderer').then(mod => mod.PDFDownloadLink), { ssr: false });
@@ -25,6 +27,17 @@ const timeAgo = (dateStr: string) => {
     if (absDiff < 3600) return rtf.format(Math.round(diff / 60), 'minute');
     if (absDiff < 8400) return rtf.format(Math.round(diff / 3600), 'hour');
     return rtf.format(Math.round(diff / 86400), 'day');
+};
+
+const formatDateAudit = (dateString: string) => {
+    if (!dateString) return '';
+    const d = new Date(dateString);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hours}:${minutes}`;
 };
 
 interface Props {
@@ -49,9 +62,15 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
     const [visitDate, setVisitDate] = useState('');
     const [copied, setCopied] = useState(false);
     const [isInternalNote, setIsInternalNote] = useState(false);
+    const [showAnularModal, setShowAnularModal] = useState(false);
 
     // Smart Close logic
     const [showSmartClose, setShowSmartClose] = useState(false);
+
+    // Child ticket description edition
+    const [isEditingDesc, setIsEditingDesc] = useState(false);
+    const [editDescription, setEditDescription] = useState(ticket.descripcion || '');
+    const [isSavingDesc, setIsSavingDesc] = useState(false);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -174,25 +193,46 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                             <div className="h-12 w-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0 shadow-sm border border-indigo-200">
                                 {ticket.profiles?.full_name?.charAt(0).toUpperCase() || <UserIcon className="w-6 h-6" />}
                             </div>
-                            <div className="min-w-0">
-                                <h2 className="text-xl font-extrabold text-slate-900 leading-tight truncate">{ticket.titulo}</h2>
-                                <p className="text-[11px] sm:text-sm text-slate-500 font-medium">
+                            <div className="min-w-0 flex-1">
+                                <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-tight line-clamp-2 md:truncate break-words">{ticket.titulo}</h2>
+                                <p className="text-[11px] sm:text-sm text-slate-500 font-medium mt-0.5">
                                     Por <span className="text-slate-800 font-bold">{ticket.profiles?.full_name}</span> • {new Date(ticket.fecha_creacion).toLocaleDateString()}
                                 </p>
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                navigator.clipboard.writeText(`NC-${ticket.numero_ticket}`);
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 2000);
-                            }}
-                            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 transition-all text-white text-xs font-black tracking-widest shadow-lg active:scale-95"
-                        >
-                            {copied ? '¡COPIADO!' : `NC-${ticket.numero_ticket}`}
-                        </button>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                            {(() => {
+                                const isCancellableState = ticket.estado !== 'anulado' && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto';
+                                const hoursSinceCreation = (new Date().getTime() - new Date(ticket.fecha_creacion).getTime()) / (1000 * 60 * 60);
+                                const isCreator = currentUserId === ticket.creado_por;
+                                const canCancel = isAdmin || (isCancellableState && isCreator && hoursSinceCreation <= 2);
+
+                                if (canCancel && isCancellableState) {
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAnularModal(true)}
+                                            className="w-full sm:w-auto flex items-center justify-center px-4 py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 transition-all text-xs font-black tracking-widest shadow-sm active:scale-95"
+                                        >
+                                            ANULAR TICKET
+                                        </button>
+                                    );
+                                }
+                                return null;
+                            })()}
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`NC-${ticket.numero_ticket}`);
+                                    setCopied(true);
+                                    setTimeout(() => setCopied(false), 2000);
+                                }}
+                                className="w-full sm:w-auto flex items-center justify-center px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 transition-all text-white text-xs font-black tracking-widest shadow-lg active:scale-95"
+                            >
+                                {copied ? '¡COPIADO!' : `NC-${ticket.numero_ticket}`}
+                            </button>
+                        </div>
                     </div>
 
                     {ticket.restaurantes && (
@@ -216,10 +256,73 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                         <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.15em]">
                             Detalles de la Solicitud
                         </span>
-                        <div
-                            className="prose prose-sm max-w-none text-slate-700 bg-indigo-50/30 p-5 pt-7 rounded-2xl border border-indigo-100/50 shadow-inner italic leading-relaxed"
-                            dangerouslySetInnerHTML={{ __html: ticket.descripcion }}
-                        />
+                        
+                        {isEditingDesc ? (
+                            <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-sm mt-3 pt-6">
+                                <textarea
+                                    value={editDescription}
+                                    onChange={(e) => setEditDescription(e.target.value)}
+                                    rows={5}
+                                    className="w-full text-sm p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-3 text-slate-700 bg-white"
+                                    placeholder="Modifica la descripción del ticket..."
+                                />
+                                <div className="flex justify-end gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setIsEditingDesc(false);
+                                            setEditDescription(ticket.descripcion);
+                                        }}
+                                        disabled={isSavingDesc}
+                                        className="px-4 py-2 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            if (!editDescription.trim()) return;
+                                            setIsSavingDesc(true);
+                                            const result = await updateChildTicketDescription(ticket.id, editDescription);
+                                            setIsSavingDesc(false);
+                                            if (result?.error) {
+                                                alert(result.error);
+                                            } else {
+                                                setIsEditingDesc(false);
+                                                window.location.reload(); 
+                                            }
+                                        }}
+                                        disabled={isSavingDesc}
+                                        className="px-4 py-2 text-xs font-bold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                                    >
+                                        {isSavingDesc ? 'Guardando...' : 'Guardar Cambios'}
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="bg-white rounded-2xl border border-indigo-100/70 shadow-sm flex flex-col transition-colors hover:border-indigo-200">
+                                <div className="py-4">
+                                    <div className="overflow-y-auto max-h-[170px] custom-scrollbar px-5 relative group">
+                                        <div dangerouslySetInnerHTML={{ __html: ticket.descripcion }} className="pr-2 pb-2 text-[13px] font-medium text-slate-700 prose prose-sm max-w-none leading-relaxed" />
+                                        
+                                        {ticket.ticket_padre_id && ticket.agente_asignado_id === currentUserId && !isEditingDesc && !['cerrado', 'resuelto', 'anulado'].includes(ticket.estado) && (
+                                            <button
+                                                onClick={() => setIsEditingDesc(true)}
+                                                className="absolute bottom-0 right-4 p-1.5 flex items-center justify-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100"
+                                                title="Editar descripción"
+                                            >
+                                                <Pencil strokeWidth={1.5} className="w-4 h-4" />
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                {ticket.descripcion_editada && (
+                                    <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 rounded-b-2xl flex justify-end mt-auto shrink-0">
+                                        <span className="italic text-[10px] text-slate-400 font-medium tracking-wide">
+                                            Detalles actualizados por: {ticket.modificado_por || 'Técnico'} - {formatDateAudit(ticket.fecha_modificacion || ticket.actualizado_en)}
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
 
                     {ticket.adjuntos && ticket.adjuntos.length > 0 && (
@@ -241,9 +344,16 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                 {/* CAJA DE RESPUESTA */}
                 <div className="p-4 bg-slate-50 border-b border-t border-slate-200 shrink-0">
-                    {ticket.estado === 'cerrado' || ticket.estado === 'resuelto' ? (
+                    {ticket.estado === 'cerrado' || ticket.estado === 'resuelto' || ticket.estado === 'anulado' ? (
                         <div className="flex flex-col gap-3">
-                            {ticket.firma_cliente && (
+                            {ticket.estado === 'anulado' && (
+                                <div className="bg-red-50 text-center py-4 rounded-xl border border-red-200 text-red-600 font-bold text-sm flex items-center justify-center gap-2 shadow-sm">
+                                    <AlertTriangle className="w-5 h-5 shrink-0" />
+                                    <span>🚫 Este ticket ha sido anulado y ya no admite nuevas respuestas.</span>
+                                </div>
+                            )}
+
+                            {ticket.estado !== 'anulado' && ticket.firma_cliente && (
                                 <div className="p-4 border border-indigo-100 bg-indigo-50/50 rounded-xl flex sm:flex-row flex-col items-center justify-between gap-3">
                                     <div className="text-center sm:text-left">
                                         <h4 className="text-sm font-bold text-slate-800">Orden de Servicio Finalizada</h4>
@@ -272,9 +382,12 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                     </PDFDownloadLink>
                                 </div>
                             )}
-                            <div className="bg-gray-50 text-center py-4 rounded-xl border border-gray-200 text-slate-500 font-medium text-sm">
-                                Este ticket ha sido cerrado/resuelto. Ya no admite respuestas.
-                            </div>
+
+                            {ticket.estado !== 'anulado' && (
+                                <div className="bg-gray-50 text-center py-4 rounded-xl border border-gray-200 text-slate-500 font-medium text-sm">
+                                    Este ticket ha sido cerrado/resuelto. Ya no admite respuestas.
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <form onSubmit={(e) => handleSendMessage(e, false)} className="relative flex flex-col gap-2">
@@ -310,8 +423,8 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                     accept=".pdf,.jpg,.jpeg,.png,.xlsx,.csv,.docx"
                                 />
 
-                                <div className="flex justify-between items-center bg-slate-50 p-2 border-t border-slate-200 h-16 shrink-0">
-                                    <div className="flex items-center gap-4 ml-4">
+                                <div className="bg-slate-50 p-3 sm:p-2 border-t border-slate-200 shrink-0 flex items-end sm:items-center justify-between gap-2">
+                                    <div className="flex items-center">
                                         <button
                                             type="button"
                                             onClick={() => fileInputRef.current?.click()}
@@ -320,28 +433,28 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                             <Paperclip className="w-4 h-4" />
                                             <span className="hidden sm:inline">Adjuntar</span>
                                         </button>
+                                    </div>
 
+                                    <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4 w-auto">
                                         {(isAgent || isAdmin) && (
-                                            <label className="flex items-center gap-2 cursor-pointer select-none group px-2 py-1.5 rounded hover:bg-white transition-colors">
+                                            <label className="flex items-center gap-1.5 cursor-pointer select-none group px-2 py-1 rounded hover:bg-white/50 transition-colors">
                                                 <input
                                                     type="checkbox"
                                                     checked={isInternalNote}
                                                     onChange={(e) => setIsInternalNote(e.target.checked)}
                                                     className="w-4 h-4 rounded text-orange-500 focus:ring-orange-500 border-gray-300"
                                                 />
-                                                <span className="text-xs font-bold text-slate-600 group-hover:text-slate-900">🔒 Nota Interna <span className="font-normal text-slate-400 hidden lg:inline">(Solo equipo Systel)</span></span>
+                                                <span className="text-[11px] sm:text-xs font-bold text-slate-600 group-hover:text-slate-900 flex items-center">🔒 Nota Interna <span className="font-normal text-slate-400 hidden lg:inline ml-1">(Solo equipo Systel)</span></span>
                                             </label>
                                         )}
-                                    </div>
-
-                                    <div className="mr-4 flex flex-1 sm:flex-none justify-end md:justify-start items-center h-10 relative">
-                                        <button
-                                            type="submit"
-                                            disabled={(!newMessage.replace(/(<([^>]+)>)/gi, "").trim() && selectedFiles.length === 0) || isSubmitting}
-                                            className={`h-full px-6 bg-brand-primary text-white font-bold text-sm hover:bg-brand-secondary disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center ${isAgent && ticket.estado !== 'resuelto' ? 'rounded-l-lg border-r border-brand-secondary' : 'rounded-lg'}`}
-                                        >
-                                            Responder
-                                        </button>
+                                        <div className="flex items-center h-10 w-full sm:w-auto relative">
+                                            <button
+                                                type="submit"
+                                                disabled={(!newMessage.replace(/(<([^>]+)>)/gi, "").trim() && selectedFiles.length === 0) || isSubmitting}
+                                                className={`h-full w-full sm:w-auto px-6 bg-brand-primary text-white font-bold text-sm hover:bg-brand-secondary disabled:opacity-50 transition-colors shadow-sm flex items-center justify-center ${isAgent && ticket.estado !== 'resuelto' ? 'rounded-l-lg border-r border-brand-secondary' : 'rounded-lg'}`}
+                                            >
+                                                Responder
+                                            </button>
 
                                         {isAgent && ticket.estado !== 'resuelto' && (
                                             <>
@@ -379,6 +492,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 )}
                                             </>
                                         )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -399,6 +513,59 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                             return messages.map((msg) => {
                                 const isMe = msg.sender_id === currentUserId;
                                 const isAgentMsg = msg.profiles?.rol === 'TECNICO';
+
+                                if (msg.tipo_evento === 'anulacion') {
+                                    return (
+                                        <div key={msg.id} className="flex justify-center my-6 w-full px-4">
+                                              <div className="bg-red-50 border border-red-300 rounded-2xl p-5 flex items-start gap-4 max-w-2xl w-full shadow-sm">
+                                                  <div className="p-3 bg-white text-red-600 rounded-xl shrink-0 shadow-sm border border-red-100 flex items-center justify-center">
+                                                      <span className="text-2xl">🚫</span>
+                                                  </div>
+                                                  <div className="flex flex-col flex-1">
+                                                      <div className="flex justify-between items-start mb-1">
+                                                          <h4 className="text-sm font-black text-red-800 uppercase tracking-widest">Ticket Anulado</h4>
+                                                          <span className="text-xs font-bold text-red-400">{timeAgo(msg.creado_en)}</span>
+                                                      </div>
+                                                      <p className="text-sm font-bold text-slate-800 mb-1">Por {msg.profiles?.full_name || 'Desconocido'}</p>
+                                                      <p className="text-sm text-slate-600 bg-white/60 p-3 rounded-lg border border-red-100 mt-2 font-medium italic">
+                                                          {msg.mensaje}
+                                                      </p>
+                                                  </div>
+                                              </div>
+                                        </div>
+                                    );
+                                }
+
+                                if (msg.tipo_evento === 'ticket_hijo') {
+                                    let childInfo = { childId: '', childNum: '' };
+                                    try {
+                                        childInfo = JSON.parse(msg.mensaje);
+                                    } catch (e) {
+                                        // Fallback if parsing fails
+                                    }
+
+                                    return (
+                                        <div key={msg.id} className="flex justify-center my-8 w-full px-4 relative">
+                                            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 max-w-2xl w-full relative z-10">
+                                                <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg grow-0 shrink-0 ring-4 ring-gray-50 z-20">
+                                                    <Link2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                                </div>
+                                                <div className="bg-white border text-center sm:text-left border-indigo-100 rounded-xl p-4 sm:p-5 flex-1 shadow-sm flex flex-col justify-between gap-3 relative mt-2 sm:mt-0">
+                                                    <p className="text-sm text-slate-700 font-medium leading-relaxed">
+                                                        🔗 Se ha generado un nuevo Ticket Adicional (ID: <Link href={`/dashboard/ticket/${childInfo.childId}`} className="text-indigo-600 font-black hover:text-indigo-800 hover:underline px-1 py-0.5 rounded-md bg-indigo-50 transition-colors">NC-{childInfo.childNum}</Link>) vinculado a este ticket.
+                                                    </p>
+                                                    <div className="flex sm:justify-end justify-center border-t border-slate-50 pt-3 mt-1">
+                                                        <span className="text-[10px] sm:text-[11px] text-slate-400 font-medium italic">
+                                                            Creado por: {msg.profiles?.full_name || 'Sistema'} • {new Date(msg.creado_en).toLocaleString('es-CL', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* Connector line behind */}
+                                            <div className="absolute top-0 bottom-0 left-1/2 sm:left-[3.5rem] w-px bg-indigo-100 -z-10" />
+                                        </div>
+                                    );
+                                }
 
                                 if (msg.tipo_evento === 'visita_programada') {
                                     let cleanMessage = msg.mensaje || '';
@@ -442,11 +609,11 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                                 commentCounter++;
                                 return (
-                                    <div key={msg.id} className="flex gap-4 w-full">
-                                        <div className={`shrink-0 h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold shadow-sm ${isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
+                                    <div key={msg.id} className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full px-2 sm:px-0">
+                                        <div className={`hidden sm:flex shrink-0 h-10 w-10 rounded-full items-center justify-center text-sm font-bold shadow-sm ${isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
                                             {msg.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
                                         </div>
-                                        <div className={`flex-1 border rounded-xl p-5 shadow-sm relative ${msg.es_interno ? 'bg-amber-50 border-yellow-300' : 'bg-white border-gray-200'}`}>
+                                        <div className={`flex-1 border rounded-xl p-4 sm:p-5 shadow-sm relative ${msg.es_interno ? 'bg-amber-50 border-yellow-300' : 'bg-white border-gray-200'}`}>
                                             {msg.es_interno && (
                                                 <div className="absolute -top-3 left-4 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-widest flex items-center gap-1  border border-orange-600">
                                                     🔒 INTERNO
@@ -556,6 +723,13 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                     ticketId={ticket.id}
                     onClose={() => setShowSmartClose(false)}
                     packingList={packingList}
+                />
+            )}
+
+            {showAnularModal && (
+                <AnularTicketModal
+                    ticketId={ticket.id}
+                    onClose={() => setShowAnularModal(false)}
                 />
             )}
         </div>

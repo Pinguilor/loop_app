@@ -1,5 +1,5 @@
 export type UserRole = 'usuario' | 'tecnico' | 'coordinador' | 'admin_bodega' | 'admin';
-export type TicketStatus = 'esperando_agente' | 'abierto' | 'pendiente' | 'programado' | 'en_progreso' | 'resuelto' | 'cerrado';
+export type TicketStatus = 'esperando_agente' | 'abierto' | 'pendiente' | 'programado' | 'en_progreso' | 'resuelto' | 'cerrado' | 'anulado';
 export type TicketPriority = 'baja' | 'media' | 'alta' | 'crítica';
 
 export interface Profile {
@@ -41,6 +41,9 @@ export interface TicketInsert {
   numero_ticket?: number;
   titulo: string;
   descripcion: string;
+  descripcion_editada?: boolean;
+  modificado_por?: string | null;
+  fecha_modificacion?: string | null;
   prioridad?: TicketPriority;
   estado?: TicketStatus;
   creado_por: string; // References profiles
@@ -66,6 +69,9 @@ export interface Ticket extends TicketInsert {
   actualizado_en: string;
   estado: TicketStatus;
   prioridad: TicketPriority;
+  descripcion_editada: boolean;
+  modificado_por?: string | null;
+  fecha_modificacion?: string | null;
   profiles?: {
     full_name: string | null;
   };

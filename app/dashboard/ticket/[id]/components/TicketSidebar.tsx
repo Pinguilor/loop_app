@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { updateTicketPropertiesAction, assignTicketToMeAction } from '../actions';
+import { updateTicketPropertiesAction, assignTicketToMeAction, updateChildTicketDescription } from '../actions';
 import Link from 'next/link';
-import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers, Pencil } from 'lucide-react';
 import { TicketStatus } from '@/types/database.types';
 import SlaTimer from '@/components/SlaTimer';
 import { AssignMaterialModal } from './AssignMaterialModal';
@@ -28,6 +28,11 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
     const [showChildTicketModal, setShowChildTicketModal] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
     const [childrenOpen, setChildrenOpen] = useState(false);
+    const [editingChildId, setEditingChildId] = useState<string | null>(null);
+    const [editingDescription, setEditingDescription] = useState('');
+    const [isSavingDesc, setIsSavingDesc] = useState(false);
+
+    const isTerminal = ['cerrado', 'resuelto', 'anulado'].includes(ticket.estado);
 
     // Hardcode possible states to make rendering easier
     const statuses: { id: TicketStatus, label: string, color: string, icon: any }[] = [
@@ -37,7 +42,8 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
         { id: 'programado', label: 'Programado', color: 'bg-purple-100 text-purple-700 border-purple-200', icon: Calendar },
         { id: 'en_progreso', label: 'En Progreso', color: 'bg-indigo-100 text-indigo-700 border-indigo-200', icon: Activity },
         { id: 'resuelto', label: 'Resuelto', color: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-        { id: 'cerrado', label: 'Cerrado', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: XCircle }
+        { id: 'cerrado', label: 'Cerrado', color: 'bg-gray-100 text-gray-700 border-gray-200', icon: XCircle },
+        { id: 'anulado', label: 'Anulado', color: 'bg-red-100 text-red-700 border-red-200 shadow-sm ring-1 ring-red-300', icon: XCircle }
     ];
 
     const priorities = [
@@ -89,6 +95,37 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
         }
     };
 
+    const startEditing = (child: any, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingChildId(child.id);
+        setEditingDescription(child.descripcion || '');
+    };
+
+    const cancelEditing = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setEditingChildId(null);
+        setEditingDescription('');
+    };
+
+    const saveEditing = async (childId: string, e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (!editingDescription.trim()) return;
+        
+        setIsSavingDesc(true);
+        const result = await updateChildTicketDescription(childId, editingDescription);
+        setIsSavingDesc(false);
+        
+        if (result?.error || result?.success === false) {
+            alert(result.error || 'Error al actualizar descripción');
+        } else {
+            setEditingChildId(null);
+        }
+    };
+
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 sticky top-8 flex flex-col max-h-[calc(100vh-6rem)]">
             <div className="bg-gray-50/50 p-4 border-b border-gray-200 rounded-t-2xl shrink-0">
@@ -104,7 +141,7 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                     <div className="p-5 border-b border-gray-50 flex flex-col gap-3">
                         <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Agente a cargo</span>
                         
-                        {isAdmin ? (
+                        {isAdmin && !isTerminal ? (
                             <div className="relative">
                                 <button
                                     onClick={() => { setAgentOpen(!agentOpen); setStatusOpen(false); setPriorityOpen(false); }}
@@ -137,17 +174,18 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                                 )}
                             </div>
                         ) : (
-                            ticket.agente_asignado_id && (
-                                <div className="flex items-center gap-3 p-3 bg-indigo-50/30 rounded-xl border border-indigo-100/50">
-                                    <div className="h-9 w-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm ring-2 ring-white">
-                                        {ticket.agente?.full_name?.charAt(0).toUpperCase() || 'A'}
+                            <div className={`flex items-center justify-between p-3 rounded-xl border ${isTerminal ? 'bg-slate-50 border-slate-200' : 'bg-indigo-50/30 border-indigo-100/50'}`}>
+                                <div className="flex items-center gap-3">
+                                    <div className={`h-9 w-9 rounded-full flex items-center justify-center font-bold text-sm shadow-sm ring-2 ring-white ${isTerminal ? 'bg-slate-200 text-slate-600' : 'bg-indigo-600 text-white'}`}>
+                                        {ticket.agente?.full_name?.charAt(0).toUpperCase() || (ticket.agente_asignado_id ? 'A' : '?')}
                                     </div>
-                                    <span className="font-bold text-sm text-gray-900 truncate">{ticket.agente?.full_name}</span>
+                                    <span className={`font-bold text-sm truncate ${isTerminal ? 'text-slate-700' : 'text-gray-900'}`}>{ticket.agente?.full_name || 'Sin Asignar'}</span>
                                 </div>
-                            )
+                                {isTerminal && <span title="Asignación congelada para auditoría" className="text-slate-400">🔒</span>}
+                            </div>
                         )}
 
-                        {isAdmin && (
+                        {isAdmin && !isTerminal && (
                             <button 
                                 onClick={() => setShowMaterialModal(true)}
                                 className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-black tracking-widest hover:bg-slate-50 transition-colors shadow-sm"
@@ -160,7 +198,7 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
 
                 {/* STATUS SECTION */}
                 <div className="p-5 border-b border-gray-50">
-                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' && (
+                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' && ticket.estado !== 'anulado' && (
                         <>
                             <button
                                 onClick={() => setShowCloseModal(true)}
@@ -186,7 +224,7 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
 
                     <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Estado del Ticket</span>
 
-                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' ? (
+                    {((isAgent || isAdmin) && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto' && ticket.estado !== 'anulado') ? (
                         <div className="relative">
                             <button
                                 onClick={() => { setStatusOpen(!statusOpen); setPriorityOpen(false); }}
@@ -204,7 +242,11 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                                 <>
                                     <div className="fixed inset-0 z-30" onClick={() => setStatusOpen(false)}></div>
                                     <div className="absolute z-40 mt-2 w-full bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1.5 ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-100">
-                                        {statuses.filter(s => s.id !== 'cerrado').map(s => {
+                                        {statuses.filter(s => {
+                                            if (s.id === 'cerrado') return false;
+                                            if (isAgent && !isAdmin && ['anulado', 'esperando_agente', 'programado', 'resuelto'].includes(s.id)) return false;
+                                            return true;
+                                        }).map(s => {
                                             const Icon = s.icon;
                                             return (
                                                 <button
@@ -233,11 +275,10 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                     )}
                 </div>
 
-                {/* PRIORITY SECTION */}
                 <div className="p-5 border-b border-gray-50">
                     <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Prioridad</span>
 
-                    {isAgent && ticket.estado !== 'cerrado' ? (
+                    {isAgent && ticket.estado !== 'cerrado' && ticket.estado !== 'anulado' ? (
                         <div className="relative">
                             <button
                                 onClick={() => { setPriorityOpen(!priorityOpen); setStatusOpen(false); }}
@@ -288,14 +329,20 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                 {ticket.vencimiento_sla && (
                     <div className="p-5 border-b border-gray-50">
                         <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tiempo de Respuesta</span>
-                        <div className="bg-slate-50 border border-slate-100 rounded-xl p-1">
-                            <SlaTimer
-                                vencimientoSla={ticket.vencimiento_sla}
-                                estado={ticket.estado}
-                                actualizadoEn={ticket.actualizado_en}
-                                fechaResolucion={ticket.fecha_resolucion}
-                            />
-                        </div>
+                        {ticket.estado === 'anulado' ? (
+                            <div className="flex items-center justify-center gap-2 bg-slate-100 text-slate-500 font-bold text-sm px-4 py-3 rounded-xl border border-slate-200 shadow-sm">
+                                ⏱️ Reloj Detenido (Anulado)
+                            </div>
+                        ) : (
+                            <div className="bg-slate-50 border border-slate-100 rounded-xl p-1">
+                                <SlaTimer
+                                    vencimientoSla={ticket.vencimiento_sla}
+                                    estado={ticket.estado}
+                                    actualizadoEn={ticket.actualizado_en}
+                                    fechaResolucion={ticket.fecha_resolucion}
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -371,29 +418,77 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                         </button>
                         
                         {childrenOpen && (
-                            <div className="px-5 pb-5 pt-0 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="px-5 pb-5 pt-0 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {childTickets.map((child: any) => {
                                     const cStatus = statuses.find(s => s.id === child.estado) || statuses[0];
                                     const StatusIcon = cStatus.icon;
                                     return (
-                                        <Link 
+                                        <div 
                                             key={child.id} 
-                                            href={`/dashboard/ticket/${child.id}`}
-                                            className="block p-3 bg-slate-50 border border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-white transition-colors group"
+                                            className="block p-4 bg-slate-50 border border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-white transition-colors group"
                                         >
                                             <div className="flex justify-between items-start mb-1.5">
-                                                <span className="text-xs font-black text-indigo-700 uppercase tracking-widest">
+                                                <Link href={`/dashboard/ticket/${child.id}`} className="text-xs font-black text-indigo-700 uppercase tracking-widest hover:underline">
                                                     NC-{child.numero_ticket}
-                                                </span>
+                                                </Link>
                                                 <div className={`flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${cStatus.color}`}>
                                                     <StatusIcon className="w-3 h-3" />
                                                     {cStatus.label}
                                                 </div>
                                             </div>
-                                            <span className="text-sm font-semibold text-slate-700 line-clamp-2 leading-tight group-hover:text-indigo-900 transition-colors">
+                                            <Link href={`/dashboard/ticket/${child.id}`} className="text-sm font-semibold text-slate-700 line-clamp-2 leading-tight hover:text-indigo-900 transition-colors block mb-2">
                                                 {child.titulo}
-                                            </span>
-                                        </Link>
+                                            </Link>
+
+                                            {editingChildId === child.id ? (
+                                                <div className="mt-3 flex flex-col gap-2">
+                                                    <textarea 
+                                                        value={editingDescription}
+                                                        onChange={e => setEditingDescription(e.target.value)}
+                                                        className="w-full text-xs p-2.5 border border-indigo-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px] text-slate-600 bg-white"
+                                                        placeholder="Modifica la descripción del ticket..."
+                                                        title="Editar Descripción"
+                                                    />
+                                                    <div className="flex gap-2 justify-end">
+                                                        <button 
+                                                            onClick={cancelEditing} 
+                                                            disabled={isSavingDesc}
+                                                            className="px-3 py-1.5 text-[10px] font-bold bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition-colors"
+                                                        >
+                                                            Cancelar
+                                                        </button>
+                                                        <button 
+                                                            onClick={(e) => saveEditing(child.id, e)} 
+                                                            disabled={isSavingDesc}
+                                                            className="px-3 py-1.5 text-[10px] font-bold bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-sm"
+                                                        >
+                                                            {isSavingDesc ? 'Guardando...' : 'Guardar'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-2 text-xs text-slate-500 relative">
+                                                    <p className="whitespace-pre-wrap">{child.descripcion}</p>
+                                                    
+                                                    <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100/50 min-h-[24px]">
+                                                        <div className="flex-1">
+                                                            {child.descripcion_editada === true && (
+                                                                <span className="italic text-[10px] text-slate-400 font-medium tracking-wide">(Corregido por Técnico)</span>
+                                                            )}
+                                                        </div>
+                                                        {isAgent && !isTerminal && (
+                                                            <button 
+                                                                onClick={(e) => startEditing(child, e)}
+                                                                className="opacity-0 group-hover:opacity-100 p-1.5 bg-indigo-50 text-indigo-500 hover:bg-indigo-500 hover:text-white rounded-md transition-all ml-auto focus:opacity-100 shadow-sm"
+                                                                title="Corregir descripción"
+                                                            >
+                                                                <Pencil className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 })}
                             </div>

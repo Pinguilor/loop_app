@@ -82,8 +82,8 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-start pt-24 pb-8 justify-center px-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-y-auto max-h-[calc(100vh-8rem)] flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200 custom-scrollbar">
                 
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

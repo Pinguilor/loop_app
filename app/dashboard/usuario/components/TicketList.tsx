@@ -76,22 +76,45 @@ export default function TicketList({ limit }: { limit?: number }) {
 
     const getStatusBadge = (status: Ticket['estado']) => {
         switch (status) {
-            case 'abierto': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-100 text-sky-700 border border-sky-200 shadow-sm">Abierto</span>;
-            case 'en_progreso': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm">En Progreso</span>;
-            case 'resuelto': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">Resuelto</span>;
-            case 'cerrado': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200 shadow-sm">Cerrado</span>;
-            default: return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">{status}</span>;
+            case 'abierto': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-sky-100 text-sky-700 border border-sky-200 shadow-sm whitespace-nowrap">Abierto</span>;
+            case 'en_progreso': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-indigo-100 text-indigo-700 border border-indigo-200 shadow-sm whitespace-nowrap">En Progreso</span>;
+            case 'resuelto': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm whitespace-nowrap">Resuelto</span>;
+            case 'cerrado': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-gray-100 text-gray-600 border border-gray-200 shadow-sm whitespace-nowrap">Cerrado</span>;
+            case 'anulado': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-red-100 text-red-700 border border-red-200 shadow-sm whitespace-nowrap ring-1 ring-red-300">Anulado</span>;
+            case 'pendiente': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-orange-100 text-orange-700 border border-orange-200 shadow-sm whitespace-nowrap">Pendiente</span>;
+            case 'programado': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-purple-100 text-purple-700 border border-purple-200 shadow-sm whitespace-nowrap">Programado</span>;
+            case 'esperando_agente': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-slate-100 text-slate-600 border border-slate-200 shadow-sm whitespace-nowrap">Sin Asignar</span>;
+            default: return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] sm:text-[11px] uppercase tracking-wider font-bold bg-gray-100 text-gray-600 whitespace-nowrap">{status}</span>;
         }
-    };
+    }
 
     const getPriorityBadge = (priority: Ticket['prioridad']) => {
         switch (priority) {
-            case 'alta': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700 border border-red-200 shadow-sm">Alta</span>;
-            case 'media': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200 shadow-sm">Media</span>;
-            case 'baja': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-200 shadow-sm">Baja</span>;
-            case 'crítica': return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-100 text-rose-700 border border-rose-200 shadow-sm">Crítica</span>;
-            default: return <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-200 shadow-sm">{priority}</span>;
+            case 'alta': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] uppercase tracking-wide font-black bg-white text-red-600 border border-red-200 shadow-sm">Alta</span>;
+            case 'crítica': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] uppercase tracking-wide font-black bg-white text-purple-700 border border-purple-200 shadow-sm">Crítica</span>;
+            case 'media': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] uppercase tracking-wide font-black bg-white text-amber-600 border border-amber-200 shadow-sm">Media</span>;
+            case 'baja': return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] uppercase tracking-wide font-black bg-white text-blue-600 border border-blue-200 shadow-sm">Baja</span>;
+            default: return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] uppercase tracking-wide font-black bg-gray-100 text-gray-700 border border-gray-200 shadow-sm">{priority}</span>;
         }
+    };
+
+    const renderSlaBadge = (ticket: Ticket) => {
+        if (!ticket.vencimiento_sla) return null;
+
+        const isResolved = ticket.estado === 'resuelto' || ticket.estado === 'cerrado' || ticket.estado === 'anulado';
+        const sla = new Date(ticket.vencimiento_sla);
+
+        if (isResolved) {
+            const resolvedAt = new Date(ticket.actualizado_en);
+            return resolvedAt <= sla
+                ? <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-green-100 text-green-700 tracking-wide uppercase whitespace-nowrap">SLA Cumplido</span>
+                : <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-red-100 text-red-700 tracking-wide uppercase whitespace-nowrap">SLA Incumplido</span>;
+        }
+
+        const diffHours = (sla.getTime() - new Date().getTime()) / (1000 * 60 * 60);
+        if (diffHours < 0) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-red-100 text-red-700 tracking-wide uppercase whitespace-nowrap">Vencido hace {Math.abs(Math.round(diffHours))}h</span>;
+        if (diffHours <= 12) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-orange-100 text-orange-700 tracking-wide uppercase whitespace-nowrap">Vence en {Math.round(diffHours)}h</span>;
+        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-green-100 text-green-700 tracking-wide uppercase whitespace-nowrap">Vence en {Math.round(diffHours)}h</span>;
     };
 
     const processedTickets = useMemo(() => {
@@ -253,13 +276,13 @@ export default function TicketList({ limit }: { limit?: number }) {
                 </table>
             </div>
 
-            {/* VISTA MÓVIL (Tarjetas apilables sin scroll horizontal) */}
-            <div className="md:hidden flex flex-col divide-y divide-gray-100 border-t border-gray-100">
+            {/* VISTA MÓVIL (Tarjetas independientes) */}
+            <div className="md:hidden flex flex-col p-4 bg-slate-50/50 border-t border-slate-200 gap-4">
                 {paginatedTickets.length === 0 ? (
-                    <div className="px-6 py-12 text-center text-gray-500">
+                    <div className="px-6 py-12 text-center text-gray-500 bg-white rounded-2xl border border-slate-200 shadow-sm">
                         <div className="flex flex-col items-center justify-center">
                             <MessageSquare className="w-12 h-12 text-gray-300 mb-3" />
-                            <p className="text-gray-500">No hay tickets en esta vista.</p>
+                            <p className="text-gray-500 font-medium">No hay tickets en esta vista.</p>
                         </div>
                     </div>
                 ) : (
@@ -267,53 +290,58 @@ export default function TicketList({ limit }: { limit?: number }) {
                         <div
                             key={ticket.id}
                             onClick={() => router.push(`/dashboard/ticket/${ticket.id}`)}
-                            className="p-4 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer flex flex-col gap-3"
+                            className="p-4 sm:p-5 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md active:bg-slate-50 transition-all cursor-pointer flex flex-col gap-3"
                         >
-                            {/* Fila 1: ID, Fecha y Prioridad */}
-                            <div className="flex justify-between items-center">
-                                <div className="flex flex-col items-start">
-                                    <div className="flex items-center gap-2">
-                                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-700 text-white text-xs font-bold tracking-wide">
+                            {/* Fila 1: Header con ID */}
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="flex flex-col min-w-0">
+                                    <div className="flex flex-wrap items-center gap-2 mb-0.5">
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-800 text-white text-[10px] font-black tracking-widest shadow-sm">
                                             NC-{ticket.numero_ticket}
-                                        </span>
-                                        <span className="text-xs text-slate-500 font-medium">
-                                            {new Date(ticket.fecha_creacion).toLocaleDateString()}
                                         </span>
                                     </div>
                                     {ticket.ticket_padre_id && ticket.padre && (
                                         <Link 
                                             href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mt-1 w-max"
+                                            className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-bold w-max bg-slate-50 px-1.5 py-0.5 rounded"
                                         >
                                             <CornerDownRight className="w-3 h-3 text-slate-400" />
                                             ↳ Adicional de NC-{ticket.padre.numero_ticket}
                                         </Link>
                                     )}
                                 </div>
-                                {getPriorityBadge(ticket.prioridad)}
+                                <div className="text-[10px] sm:text-[11px] text-slate-400 font-bold whitespace-nowrap pt-1">
+                                    {new Date(ticket.fecha_creacion).toLocaleDateString()}
+                                </div>
                             </div>
 
                             {/* Fila 2: Título */}
-                            <div className="font-bold text-slate-900 leading-tight">
+                            <div className="font-extrabold text-sm sm:text-base text-slate-900 leading-snug break-words mt-1">
                                 {ticket.titulo}
                             </div>
 
-                            {/* Fila 3: Ubicación y Estado */}
-                            <div className="flex justify-between items-end gap-2">
-                                <div className="flex flex-col gap-1 text-xs text-slate-500 overflow-hidden pr-2">
-                                    {ticket.restaurantes?.nombre_restaurante && (
-                                        <span className="font-medium text-slate-600 flex items-center gap-1 truncate">
-                                            📍 {ticket.restaurantes.nombre_restaurante}
-                                        </span>
-                                    )}
-                                    {ticket.catalogo_servicios && (
-                                        <span className="truncate text-slate-700">
-                                            {ticket.catalogo_servicios.categoria} &rsaquo; <span className="font-semibold">{ticket.catalogo_servicios.elemento}</span>
-                                        </span>
-                                    )}
+                            {/* Fila 3: Ubicación y Categoría */}
+                            <div className="flex flex-col gap-1.5 text-[11px] text-slate-500">
+                                {ticket.restaurantes?.nombre_restaurante && (
+                                    <span className="font-bold text-slate-700 flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 w-max rounded-lg border border-slate-100">
+                                        📍 {ticket.restaurantes.nombre_restaurante}
+                                    </span>
+                                )}
+                                {ticket.catalogo_servicios && (
+                                    <span className="font-medium text-slate-600 flex items-center gap-1.5 mt-0.5">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div> {ticket.catalogo_servicios.categoria} &rsaquo; <span className="text-slate-800 font-bold">{ticket.catalogo_servicios.subcategoria}</span>
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Fila 4: Badges Consolidados */}
+                            <div className="flex flex-wrap items-center justify-between gap-3 mt-1.5 pt-3 border-t border-slate-100">
+                                <div className="flex flex-wrap gap-2 items-center">
+                                    {getPriorityBadge(ticket.prioridad)}
+                                    {renderSlaBadge(ticket)}
                                 </div>
-                                <div className="flex-shrink-0">
+                                <div className="shrink-0 flex items-center justify-end">
                                     {getStatusBadge(ticket.estado)}
                                 </div>
                             </div>

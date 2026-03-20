@@ -14,7 +14,7 @@ export default async function tecnicoDashboard() {
     // Get true rol from database to avoid stale metadata
     const { data: profile } = await supabase
         .from('profiles')
-        .select('rol')
+        .select('rol, full_name')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -40,12 +40,14 @@ export default async function tecnicoDashboard() {
     }
 
     return (
-        <div className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8 space-y-8">
+        <div className="max-w-7xl mx-auto py-4 md:py-8 px-0 sm:px-6 lg:px-8 space-y-4 md:space-y-8 min-h-screen">
             {/* Agent Analytics Dashboard */}
-            <AgentAnalytics tickets={tickets || []} />
+            <div className="hidden md:block px-4 sm:px-0">
+                <AgentAnalytics tickets={tickets || []} />
+            </div>
 
             <div className="w-full">
-                <AdminTicketList initialTickets={tickets || []} currentAgentId={user.id} />
+                <AdminTicketList initialTickets={tickets || []} currentAgentId={user.id} agentName={profile?.full_name} />
             </div>
         </div>
     )

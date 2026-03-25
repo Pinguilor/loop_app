@@ -27,6 +27,49 @@ const ALLOWED_TYPES = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
 ];
 
+// --- NUEVO COMPONENTE DE VISTA PREVIA ---
+function ImagePreviewItem({ file, onRemove }: { file: File; onRemove: () => void }) {
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!file || !file.type.startsWith('image/')) return;
+        const objectUrl = URL.createObjectURL(file);
+        setPreviewUrl(objectUrl);
+        return () => URL.revokeObjectURL(objectUrl);
+    }, [file]);
+
+    return (
+        <li className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100 shadow-sm">
+            <div className="flex items-center gap-3 overflow-hidden">
+                {previewUrl ? (
+                    <img
+                        src={previewUrl}
+                        alt="Vista previa"
+                        className="w-10 h-10 object-cover rounded-md border border-slate-200 shrink-0 shadow-sm"
+                    />
+                ) : (
+                    <div className="w-10 h-10 bg-white flex items-center justify-center rounded-md border border-slate-200 text-slate-400 shrink-0 shadow-sm">
+                        📄
+                    </div>
+                )}
+                <div className="flex flex-col truncate pr-2">
+                    <span className="text-xs font-bold text-slate-700 truncate">{file.name || 'Imagen adjunta'}</span>
+                    <span className="text-[10px] text-slate-400 font-medium">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                </div>
+            </div>
+            <button
+                type="button"
+                onClick={onRemove}
+                className="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 p-1.5 rounded-md transition-colors focus:outline-none flex-shrink-0"
+                title="Eliminar archivo"
+            >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+            </button>
+        </li>
+    );
+}
+// -----------------------------------------
+
 interface Props {
     onClose?: () => void;
 }
@@ -102,7 +145,7 @@ export function TicketForm({ onClose }: Props) {
                 .eq('tipo_servicio_id', selectedTipoServicioId)
                 .eq('activo', true)
                 .order('nombre');
-                
+
             if (data) setCategorias(data);
         }
 
@@ -124,7 +167,7 @@ export function TicketForm({ onClose }: Props) {
                 .eq('categoria_id', selectedCategoriaId)
                 .eq('activo', true)
                 .order('nombre');
-                
+
             if (data) setSubcategorias(data);
         }
 
@@ -146,7 +189,7 @@ export function TicketForm({ onClose }: Props) {
                 .eq('subcategoria_id', selectedSubcategoriaId)
                 .eq('activo', true)
                 .order('nombre');
-                
+
             if (data) setAcciones(data);
         }
 
@@ -384,7 +427,7 @@ export function TicketForm({ onClose }: Props) {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                            
+
                             {/* A. Tipo de Servicio */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Tipo de Servicio</label>
@@ -523,20 +566,11 @@ export function TicketForm({ onClose }: Props) {
                                     <div className="bg-white rounded-xl border border-gray-200 p-2 shadow-sm">
                                         <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                             {files.map((file, index) => (
-                                                <li key={`${file.name}-${index}`} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg border border-slate-100">
-                                                    <div className="flex flex-col truncate pr-4">
-                                                        <span className="text-xs font-bold text-slate-700 truncate">{file.name}</span>
-                                                        <span className="text-[10px] text-slate-400 font-medium">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
-                                                    </div>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeFile(index)}
-                                                        className="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 p-1.5 rounded-md transition-colors focus:outline-none flex-shrink-0"
-                                                        title="Eliminar archivo"
-                                                    >
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                                    </button>
-                                                </li>
+                                                <ImagePreviewItem
+                                                    key={`${file.name}-${index}`}
+                                                    file={file}
+                                                    onRemove={() => removeFile(index)}
+                                                />
                                             ))}
                                         </ul>
                                     </div>

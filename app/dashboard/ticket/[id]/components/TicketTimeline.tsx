@@ -166,7 +166,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
     const getFileIcon = (url: string) => {
         const ext = url.split('.').pop()?.toLowerCase() || '';
         if (ext.includes('pdf')) return <FileText className="w-5 h-5 text-red-500" />;
-        if (ext.includes('jpg') || ext.includes('jpeg') || ext.includes('png')) return <ImageIcon className="w-5 h-5 text-blue-500" />;
+        if (ext.includes('jpg') || ext.includes('jpeg') || ext.includes('png') || url.toLowerCase().includes('blob')) return <ImageIcon className="w-5 h-5 text-blue-500" />;
         if (ext.includes('xlsx') || ext.includes('csv')) return <FileSpreadsheet className="w-5 h-5 text-green-500" />;
         return <File className="w-5 h-5 text-gray-500" />;
     };
@@ -273,7 +273,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                         <span className="absolute -top-2.5 left-4 bg-white px-2 text-[10px] font-black text-indigo-600 uppercase tracking-[0.15em]">
                             Detalles de la Solicitud
                         </span>
-                        
+
                         {isEditingDesc ? (
                             <div className="bg-white p-4 rounded-2xl border border-indigo-200 shadow-sm mt-3 pt-6">
                                 <textarea
@@ -304,7 +304,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 alert(result.error);
                                             } else {
                                                 setIsEditingDesc(false);
-                                                window.location.reload(); 
+                                                window.location.reload();
                                             }
                                         }}
                                         disabled={isSavingDesc}
@@ -319,7 +319,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 <div className="py-4">
                                     <div className="overflow-y-auto max-h-[170px] custom-scrollbar px-5 relative group">
                                         <div dangerouslySetInnerHTML={{ __html: ticket.descripcion }} className="pr-2 pb-2 text-[13px] font-medium text-slate-700 prose prose-sm max-w-none leading-relaxed" />
-                                        
+
                                         {ticket.ticket_padre_id && ticket.agente_asignado_id === currentUserId && !isEditingDesc && !['cerrado', 'resuelto', 'anulado'].includes(ticket.estado) && (
                                             <button
                                                 onClick={() => setIsEditingDesc(true)}
@@ -347,13 +347,24 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                             <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-1">
                                 <Paperclip className="w-3.5 h-3.5" /> Adjuntos ({ticket.adjuntos.length})
                             </h4>
-                            <div className="flex flex-wrap gap-2">
-                                {ticket.adjuntos.map((url: string, index: number) => (
-                                    <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 transition-colors shadow-sm text-xs font-medium text-slate-600">
-                                        {getFileIcon(url)}
-                                        <span className="truncate max-w-[120px]">{url.split('/').pop()?.split('_').slice(1).join('_') || `Archivo ${index + 1}`}</span>
-                                    </a>
-                                ))}
+                            <div className="flex flex-wrap gap-3">
+                                {ticket.adjuntos.map((url: string, index: number) => {
+                                    // REGLA MÁGICA: Si es foto o se llama blob, móstralo como imagen
+                                    const urlLower = url.toLowerCase();
+                                    const ext = urlLower.split('.').pop() || '';
+                                    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || urlLower.includes('blob');
+
+                                    return isImage ? (
+                                        <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block w-24 h-24 sm:w-32 sm:h-32 overflow-hidden rounded-lg border border-gray-200 hover:opacity-90 transition-opacity shadow-sm">
+                                            <img src={url} alt="Adjunto" className="w-full h-full object-cover" />
+                                        </a>
+                                    ) : (
+                                        <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 p-2 bg-white border border-gray-200 rounded-lg hover:bg-indigo-50 transition-colors shadow-sm text-xs font-medium text-slate-600">
+                                            {getFileIcon(url)}
+                                            <span className="truncate max-w-[120px]">{url.split('/').pop()?.split('_').slice(1).join('_') || `Archivo ${index + 1}`}</span>
+                                        </a>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -378,7 +389,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                             <span>El trabajo y firmas fueron registrados.</span>
                                             {ticket.latitud_cierre !== null && ticket.latitud_cierre !== 0 && (
                                                 <a
-                                                    href={`https://www.google.com/maps?q=${ticket.latitud_cierre},${ticket.longitud_cierre}`}
+                                                    href={`https://www.google.com/maps?q=$${ticket.latitud_cierre},${ticket.longitud_cierre}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100/80 hover:bg-emerald-200 text-emerald-700 border border-emerald-200/60 rounded text-[10px] font-bold uppercase tracking-widest transition-colors w-max mx-auto sm:mx-0"
@@ -489,42 +500,42 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 Responder
                                             </button>
 
-                                        {isAgent && ticket.estado !== 'resuelto' && (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setIsSplitOpen(!isSplitOpen)}
-                                                    className="h-full px-3 bg-brand-primary text-white rounded-r-lg hover:bg-brand-secondary transition-colors shadow-sm flex items-center justify-center border-l border-white/20"
-                                                >
-                                                    <ChevronDown className="w-4 h-4" />
-                                                </button>
+                                            {isAgent && ticket.estado !== 'resuelto' && (
+                                                <>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsSplitOpen(!isSplitOpen)}
+                                                        className="h-full px-3 bg-brand-primary text-white rounded-r-lg hover:bg-brand-secondary transition-colors shadow-sm flex items-center justify-center border-l border-white/20"
+                                                    >
+                                                        <ChevronDown className="w-4 h-4" />
+                                                    </button>
 
-                                                {isSplitOpen && (
-                                                    <>
-                                                        <div className="fixed inset-0 z-30" onClick={() => setIsSplitOpen(false)}></div>
-                                                        <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1 z-40">
-                                                            <button type="button" onClick={() => { setIsSplitOpen(false); setShowVisitPopover(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors">
-                                                                <Calendar className="w-5 h-5" /> Responder y Programar Visita
-                                                            </button>
-                                                        </div>
-                                                    </>
-                                                )}
-
-                                                {showVisitPopover && (
-                                                    <>
-                                                        <div className="fixed inset-0 z-30" onClick={() => setShowVisitPopover(false)}></div>
-                                                        <div className="absolute right-0 bottom-full mb-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 z-40">
-                                                            <h4 className="text-sm font-bold text-gray-900 mb-2">Programar Visita</h4>
-                                                            <input type="date" required value={visitDate} onChange={e => setVisitDate(e.target.value)} className="w-full text-sm font-medium border border-gray-300 rounded-lg py-2 px-3 mb-3 focus:ring-2 focus:ring-indigo-500" />
-                                                            <div className="flex gap-2 justify-end">
-                                                                <button type="button" onClick={() => setShowVisitPopover(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg">Cancelar</button>
-                                                                <button type="button" onClick={handleScheduleVisit} disabled={isSubmitting || !visitDate} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-secondary rounded-lg">Confirmar</button>
+                                                    {isSplitOpen && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-30" onClick={() => setIsSplitOpen(false)}></div>
+                                                            <div className="absolute right-0 bottom-full mb-2 w-64 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1 z-40">
+                                                                <button type="button" onClick={() => { setIsSplitOpen(false); setShowVisitPopover(true); }} className="w-full text-left px-4 py-3 text-sm font-bold text-sky-700 hover:bg-sky-50 flex items-center gap-2 transition-colors">
+                                                                    <Calendar className="w-5 h-5" /> Responder y Programar Visita
+                                                                </button>
                                                             </div>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </>
-                                        )}
+                                                        </>
+                                                    )}
+
+                                                    {showVisitPopover && (
+                                                        <>
+                                                            <div className="fixed inset-0 z-30" onClick={() => setShowVisitPopover(false)}></div>
+                                                            <div className="absolute right-0 bottom-full mb-2 w-72 bg-white rounded-xl shadow-xl border border-gray-100 p-4 z-40">
+                                                                <h4 className="text-sm font-bold text-gray-900 mb-2">Programar Visita</h4>
+                                                                <input type="date" required value={visitDate} onChange={e => setVisitDate(e.target.value)} className="w-full text-sm font-medium border border-gray-300 rounded-lg py-2 px-3 mb-3 focus:ring-2 focus:ring-indigo-500" />
+                                                                <div className="flex gap-2 justify-end">
+                                                                    <button type="button" onClick={() => setShowVisitPopover(false)} className="px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-lg">Cancelar</button>
+                                                                    <button type="button" onClick={handleScheduleVisit} disabled={isSubmitting || !visitDate} className="px-3 py-1.5 text-xs font-bold text-white bg-brand-primary hover:bg-brand-secondary rounded-lg">Confirmar</button>
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    )}
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                 </div>
@@ -550,21 +561,21 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 if (msg.tipo_evento === 'anulacion') {
                                     return (
                                         <div key={msg.id} className="flex justify-center my-6 w-full px-4">
-                                              <div className="bg-red-50 border border-red-300 rounded-2xl p-5 flex items-start gap-4 max-w-2xl w-full shadow-sm">
-                                                  <div className="p-3 bg-white text-red-600 rounded-xl shrink-0 shadow-sm border border-red-100 flex items-center justify-center">
-                                                      <span className="text-2xl">🚫</span>
-                                                  </div>
-                                                  <div className="flex flex-col flex-1">
-                                                      <div className="flex justify-between items-start mb-1">
-                                                          <h4 className="text-sm font-black text-red-800 uppercase tracking-widest">Ticket Anulado</h4>
-                                                          <span className="text-xs font-bold text-red-400">{timeAgo(msg.creado_en)}</span>
-                                                      </div>
-                                                      <p className="text-sm font-bold text-slate-800 mb-1">Por {msg.profiles?.full_name || 'Desconocido'}</p>
-                                                      <p className="text-sm text-slate-600 bg-white/60 p-3 rounded-lg border border-red-100 mt-2 font-medium italic">
-                                                          {msg.mensaje}
-                                                      </p>
-                                                  </div>
-                                              </div>
+                                            <div className="bg-red-50 border border-red-300 rounded-2xl p-5 flex items-start gap-4 max-w-2xl w-full shadow-sm">
+                                                <div className="p-3 bg-white text-red-600 rounded-xl shrink-0 shadow-sm border border-red-100 flex items-center justify-center">
+                                                    <span className="text-2xl">🚫</span>
+                                                </div>
+                                                <div className="flex flex-col flex-1">
+                                                    <div className="flex justify-between items-start mb-1">
+                                                        <h4 className="text-sm font-black text-red-800 uppercase tracking-widest">Ticket Anulado</h4>
+                                                        <span className="text-xs font-bold text-red-400">{timeAgo(msg.creado_en)}</span>
+                                                    </div>
+                                                    <p className="text-sm font-bold text-slate-800 mb-1">Por {msg.profiles?.full_name || 'Desconocido'}</p>
+                                                    <p className="text-sm text-slate-600 bg-white/60 p-3 rounded-lg border border-red-100 mt-2 font-medium italic">
+                                                        {msg.mensaje}
+                                                    </p>
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 }
@@ -665,14 +676,17 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                             {msg.adjuntos && msg.adjuntos.length > 0 && (
                                                 <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-3">
                                                     {msg.adjuntos.map((url: string, idx: number) => {
-                                                        const ext = url.split('.').pop()?.toLowerCase();
-                                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext || '');
+                                                        // REGLA MÁGICA PARA COMENTARIOS: Si es foto o se llama blob, móstralo como imagen
+                                                        const urlLower = url.toLowerCase();
+                                                        const ext = urlLower.split('.').pop() || '';
+                                                        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || urlLower.includes('blob');
+
                                                         return isImage ? (
-                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="block w-48 h-32 overflow-hidden rounded-lg border border-gray-200 hover:opacity-90 transition-opacity">
-                                                                <img src={url} alt="Adjunto" className="w-full h-full object-cover" />
+                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="block w-48 h-32 overflow-hidden rounded-lg border border-gray-200 hover:opacity-90 transition-opacity shadow-sm">
+                                                                <img src={url} alt="Imagen adjunta" className="w-full h-full object-cover" />
                                                             </a>
                                                         ) : (
-                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 shadow-sm text-sm hover:bg-gray-50 bg-white group transition-colors">
+                                                            <a key={idx} href={url} target="_blank" rel="noreferrer" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 shadow-sm text-sm hover:bg-gray-50 bg-white group transition-colors w-full sm:w-auto">
                                                                 {getFileIcon(url)}
                                                                 <span className="truncate max-w-[200px] font-medium text-gray-700 group-hover:text-indigo-600">{url.split('/').pop()?.split('_').slice(1).join('_') || `Adjunto ${idx + 1}`}</span>
                                                             </a>

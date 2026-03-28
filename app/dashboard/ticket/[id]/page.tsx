@@ -20,8 +20,10 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
 
     // Get User Role to handle permissions
     const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).maybeSingle();
-    const isAgent = profile?.rol?.toUpperCase() === 'TECNICO';
-    const isAdmin = profile?.rol?.toUpperCase() === 'ADMIN' || profile?.rol?.toUpperCase() === 'COORDINADOR';
+    const userRole = profile?.rol ?? 'usuario';
+    const isAgent = userRole.toUpperCase() === 'TECNICO';
+    const isAdmin = userRole.toUpperCase() === 'ADMIN' || userRole.toUpperCase() === 'COORDINADOR';
+    const isSystemelStaff = ['admin', 'tecnico', 'coordinador', 'admin_bodega'].includes(userRole);
 
     // Fetch the Ticket
     // We get the ticket itself, the requester's profile, and all messages with their respective sender profiles
@@ -111,17 +113,19 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
         new Date(a.creado_en).getTime() - new Date(b.creado_en).getTime()
     );
 
-    // Fetch packing list (movimientos de inventario para este ticket)
-    const { data: packingListRaw } = await supabase
-        .from('movimientos_inventario')
-        .select(`
-            *,
-            inventario (*)
-        `)
-        .eq('ticket_id', ticketId)
-        .order('fecha_movimiento', { ascending: false });
-    
-    const packingList = packingListRaw || [];
+    // Fetch packing list — solo para personal Systel (no clientes externos)
+    let packingList: any[] = [];
+    if (isSystemelStaff) {
+        const { data: packingListRaw } = await supabase
+            .from('movimientos_inventario')
+            .select(`
+                *,
+                inventario (*)
+            `)
+            .eq('ticket_id', ticketId)
+            .order('fecha_movimiento', { ascending: false });
+        packingList = packingListRaw || [];
+    }
 
     // Fetch child tickets
     const { data: childTicketsRaw } = await supabase
@@ -182,6 +186,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                             ticket={ticket}
                             isAgent={isAgent}
                             isAdmin={isAdmin}
+                            userRole={userRole}
                             agents={agents}
                             inventarioCentral={inventarioCentral}
                             packingList={packingList}

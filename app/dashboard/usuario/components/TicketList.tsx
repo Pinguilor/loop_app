@@ -102,39 +102,6 @@ export default function TicketList({ limit }: { limit?: number }) {
         }
     };
 
-    const renderSlaBadge = (ticket: Ticket) => {
-        const dbSlaStatus = (ticket as any).slaStatus;
-        if (dbSlaStatus) {
-            const statusStr = String(dbSlaStatus).toLowerCase();
-            if (statusStr.includes('incumplido')) {
-                return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-red-100 text-red-700 tracking-wide uppercase whitespace-nowrap">{dbSlaStatus}</span>;
-            } else if (statusStr.includes('cumplido')) {
-                return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-green-100 text-green-700 tracking-wide uppercase whitespace-nowrap">{dbSlaStatus}</span>;
-            }
-            return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-gray-100 text-gray-700 tracking-wide uppercase whitespace-nowrap">{dbSlaStatus}</span>;
-        }
-
-        if (!ticket.vencimiento_sla) return null;
-
-        const isResolved = ticket.estado === 'resuelto' || ticket.estado === 'cerrado' || ticket.estado === 'anulado';
-        const sla = new Date(ticket.vencimiento_sla);
-
-        if (isResolved) {
-            let resolutionDate = new Date(ticket.actualizado_en);
-            if (ticket.fecha_resolucion) {
-                resolutionDate = new Date(ticket.fecha_resolucion);
-            }
-            return resolutionDate <= sla
-                ? <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-green-100 text-green-700 tracking-wide uppercase whitespace-nowrap">SLA Cumplido</span>
-                : <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-red-100 text-red-700 tracking-wide uppercase whitespace-nowrap">SLA Incumplido</span>;
-        }
-
-        const diffHours = (sla.getTime() - new Date().getTime()) / (1000 * 60 * 60);
-        if (diffHours < 0) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-red-100 text-red-700 tracking-wide uppercase whitespace-nowrap">Vencido hace {Math.abs(Math.round(diffHours))}h</span>;
-        if (diffHours <= 12) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-orange-100 text-orange-700 tracking-wide uppercase whitespace-nowrap">Vence en {Math.round(diffHours)}h</span>;
-        return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] sm:text-[10px] font-bold bg-green-100 text-green-700 tracking-wide uppercase whitespace-nowrap">Vence en {Math.round(diffHours)}h</span>;
-    };
-
     const processedTickets = useMemo(() => {
         // 1. Filter by Status Tab
         let filtered = tickets.filter(ticket => {
@@ -382,7 +349,6 @@ export default function TicketList({ limit }: { limit?: number }) {
                             <div className="flex flex-wrap items-center justify-between gap-3 mt-1.5 pt-3 border-t border-slate-100">
                                 <div className="flex flex-wrap gap-2 items-center">
                                     {getPriorityBadge(ticket.prioridad)}
-                                    {renderSlaBadge(ticket)}
                                 </div>
                                 <div className="shrink-0 flex items-center justify-end">
                                     {getStatusBadge(ticket.estado)}

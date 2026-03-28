@@ -12,7 +12,7 @@ export default async function AdminDashboard() {
 
     const { data: profile } = await supabase
         .from('profiles')
-        .select('rol')
+        .select('rol, full_name')
         .eq('id', user.id)
         .maybeSingle();
 
@@ -20,7 +20,7 @@ export default async function AdminDashboard() {
         redirect(profile?.rol?.toUpperCase() === 'TECNICO' ? '/dashboard/tecnico' : '/dashboard/usuario');
     }
 
-    // Fetch ALL tickets for Admin
+    // Fetch ALL tickets for Admin — incluye JOIN a clientes para vista Multi-Tenant
     const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
@@ -28,9 +28,11 @@ export default async function AdminDashboard() {
             profiles:creado_por(full_name), 
             restaurantes(nombre_restaurante), 
             catalogo_servicios(categoria, subcategoria, elemento),
-            padre:ticket_padre_id(numero_ticket)
+            padre:ticket_padre_id(numero_ticket),
+            clientes(nombre_fantasia)
         `)
         .order('fecha_creacion', { ascending: false });
+
 
     if (error) {
         console.error("Error al cargar todos los tickets para admin:", error.message);
@@ -38,7 +40,12 @@ export default async function AdminDashboard() {
 
     return (
         <div className="max-w-7xl mx-auto py-8 sm:px-6 lg:px-8 space-y-8">
-            <h1 className="text-3xl font-black text-slate-900 px-4 sm:px-0">Panel del Administrador</h1>
+            <div className="px-4 sm:px-0">
+                <p className="text-sm font-semibold text-slate-400 tracking-wide uppercase">Panel de Control</p>
+                <h1 className="text-3xl font-extrabold text-slate-950 tracking-tight">
+                    Hola, {profile?.full_name?.split(' ')[0] ?? 'Administrador'} 👋
+                </h1>
+            </div>
             <div className="w-full">
                 <AdminTicketList initialTickets={tickets || []} currentAgentId={user.id} />
             </div>

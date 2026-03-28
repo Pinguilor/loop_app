@@ -5,7 +5,6 @@ import { updateTicketPropertiesAction, assignTicketToMeAction, updateChildTicket
 import Link from 'next/link';
 import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers, Pencil } from 'lucide-react';
 import { TicketStatus } from '@/types/database.types';
-import SlaTimer from '@/components/SlaTimer';
 import { AssignMaterialModal } from './AssignMaterialModal';
 import { AddChildTicketModal } from './AddChildTicketModal';
 import { CloseTicketModal } from './CloseTicketModal';
@@ -15,6 +14,7 @@ interface Props {
     ticket: any;
     isAgent: boolean;
     isAdmin?: boolean;
+    userRole?: string;
     agents?: any[];
     inventarioCentral?: any[];
     packingList?: any[];
@@ -22,16 +22,19 @@ interface Props {
     childTickets?: any[];
 }
 
-export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], inventarioCentral = [], packingList = [], inventarioTicket = [], childTickets = [] }: Props) {
+export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'usuario', agents = [], inventarioCentral = [], packingList = [], inventarioTicket = [], childTickets = [] }: Props) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [showMaterialModal, setShowMaterialModal] = useState(false);
     const [showChildTicketModal, setShowChildTicketModal] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
     const [childrenOpen, setChildrenOpen] = useState(false);
+    const [packingOpen, setPackingOpen] = useState(false);
     const [editingChildId, setEditingChildId] = useState<string | null>(null);
     const [editingDescription, setEditingDescription] = useState('');
     const [isSavingDesc, setIsSavingDesc] = useState(false);
     const [agentToConfirm, setAgentToConfirm] = useState<any>(null);
+
+    const isSystemelStaff = ['admin', 'tecnico', 'coordinador', 'admin_bodega'].includes(userRole);
 
     const isTerminal = ['cerrado', 'resuelto', 'anulado'].includes(ticket.estado);
 
@@ -328,53 +331,48 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, agents = [], i
                     )}
                 </div>
 
-                {/* SLA SECTION */}
-                {ticket.vencimiento_sla && (
-                    <div className="p-5 border-b border-gray-50">
-                        <span className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Tiempo de Respuesta</span>
-                        {ticket.estado === 'anulado' ? (
-                            <div className="flex items-center justify-center gap-2 bg-slate-100 text-slate-500 font-bold text-sm px-4 py-3 rounded-xl border border-slate-200 shadow-sm">
-                                ⏱️ Reloj Detenido (Anulado)
+                {/* PACKING LIST SECTION — solo personal Systel */}
+                {isSystemelStaff && packingList.length > 0 && (
+                    <div className="border-b border-gray-50">
+                        <button
+                            onClick={() => setPackingOpen(o => !o)}
+                            className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors group"
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">Lista de Empaque</span>
+                                <span className="text-[10px] font-bold text-indigo-400 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-full">
+                                    {packingList.length}
+                                </span>
                             </div>
-                        ) : (
-                            <div className="bg-slate-50 border border-slate-100 rounded-xl p-1">
-                                <SlaTimer
-                                    vencimientoSla={ticket.vencimiento_sla}
-                                    estado={ticket.estado}
-                                    actualizadoEn={ticket.actualizado_en}
-                                    fechaResolucion={ticket.fecha_resolucion}
-                                />
-                            </div>
-                        )}
-                    </div>
-                )}
+                            <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${packingOpen ? 'rotate-180' : ''}`} />
+                        </button>
 
-                {/* PACKING LIST SECTION */}
-                {packingList.length > 0 && (
-                    <div className="p-5 border-b border-gray-50">
-                        <span className="block text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-3">Lista de Empaque</span>
-                        <div className="space-y-2">
-                            {packingList.map((mov) => {
-                                const inv = mov.inventario;
-                                if (!inv) return null;
-                                return (
-                                    <div key={mov.id} className="flex justify-between items-start p-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl shadow-sm hover:bg-white hover:border-indigo-200 transition-colors group">
-                                        <div className="flex flex-col gap-0.5">
-                                            <span className="text-sm font-bold text-slate-800">{inv.modelo}</span>
-                                            <span className="text-[10px] font-bold text-slate-400 capitalize">{inv.familia}</span>
-                                            {inv.es_serializado && (
-                                                <span className="text-[10px] font-black text-indigo-600 bg-indigo-100/50 py-0.5 px-1.5 rounded uppercase mt-1 inline-block w-max">
-                                                    SN: {inv.numero_serie || 'N/A'}
-                                                </span>
-                                            )}
-                                        </div>
-                                        <div className="bg-indigo-600 text-white rounded-lg px-2 py-1 flex flex-col items-center justify-center shadow-sm">
-                                            <span className="text-[10px] uppercase font-bold opacity-80 leading-tight">CANT</span>
-                                            <span className="text-sm font-black leading-tight">{mov.cantidad}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                        <div className={`grid transition-all duration-300 ease-in-out ${packingOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                            <div className="overflow-hidden">
+                                <div className="px-5 pb-5 space-y-2">
+                                    {packingList.map((mov) => {
+                                        const inv = mov.inventario;
+                                        if (!inv) return null;
+                                        return (
+                                            <div key={mov.id} className="flex justify-between items-start p-3 bg-indigo-50/30 border border-indigo-100/50 rounded-xl shadow-sm hover:bg-white hover:border-indigo-200 transition-colors group">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <span className="text-sm font-bold text-slate-800">{inv.modelo}</span>
+                                                    <span className="text-[10px] font-bold text-slate-400 capitalize">{inv.familia}</span>
+                                                    {inv.es_serializado && (
+                                                        <span className="text-[10px] font-black text-indigo-600 bg-indigo-100/50 py-0.5 px-1.5 rounded uppercase mt-1 inline-block w-max">
+                                                            SN: {inv.numero_serie || 'N/A'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="bg-indigo-600 text-white rounded-lg px-2 py-1 flex flex-col items-center justify-center shadow-sm">
+                                                    <span className="text-[10px] uppercase font-bold opacity-80 leading-tight">CANT</span>
+                                                    <span className="text-sm font-black leading-tight">{mov.cantidad}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

@@ -125,7 +125,7 @@ export async function addTicketMessageAction(formData: FormData) {
     return { success: true };
 }
 
-export async function updateTicketPropertiesAction(ticketId: string, updates: { estado?: TicketStatus, prioridad?: string, agente_asignado_id?: string | null, vencimiento_sla?: string | null }) {
+export async function updateTicketPropertiesAction(ticketId: string, updates: { estado?: TicketStatus, prioridad?: string, agente_asignado_id?: string | null }) {
     const supabase = await createClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -144,21 +144,6 @@ export async function updateTicketPropertiesAction(ticketId: string, updates: { 
 
     if (updates.estado === 'esperando_agente') {
         updates.agente_asignado_id = null;
-    }
-
-    if (updates.prioridad) {
-        const { data: ticketData } = await supabase.from('tickets').select('fecha_creacion').eq('id', ticketId).single();
-        if (ticketData) {
-            const creacion = new Date(ticketData.fecha_creacion);
-            let horasSla = 72; // Baja Default
-            switch (updates.prioridad) {
-                case 'crítica': horasSla = 4; break;
-                case 'alta': horasSla = 24; break;
-                case 'media': horasSla = 48; break;
-            }
-            creacion.setHours(creacion.getHours() + horasSla);
-            updates.vencimiento_sla = creacion.toISOString();
-        }
     }
 
     const { data: updatedTicket, error } = await supabase
@@ -870,17 +855,6 @@ export async function createChildTicketAction(formData: FormData) {
         return { error: 'El ticket padre no existe o no tienes permisos.' };
     }
 
-    const getSLAHours = (p: string) => {
-        switch (p) {
-            case 'crítica': return 4;
-            case 'alta': return 24;
-            case 'media': return 48;
-            case 'baja': return 72;
-            default: return 72;
-        }
-    };
-    const vencimiento_sla = new Date(Date.now() + getSLAHours(prioridad) * 60 * 60 * 1000).toISOString();
-
     const newTicketId = crypto.randomUUID();
 
     const { error: insertError } = await supabase
@@ -897,7 +871,6 @@ export async function createChildTicketAction(formData: FormData) {
             estado: 'abierto',
             agente_asignado_id: user.id,
             creado_por: parentTicket.creado_por,
-            vencimiento_sla: vencimiento_sla,
         });
 
     if (insertError) {
@@ -1104,5 +1077,211 @@ export async function updateChildTicketDescription(childTicketId: string, nuevaD
         console.error('--- ERROR CRÍTICO ACTUALIZANDO DESCRIPCIÓN ---');
         console.error(error);
         return { success: false, error: error.message || 'Error interno al actualizar.' };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLUJO PULL: Crear Solicitud de Materiales a Bodega (Técnico)
+// ─────────────────────────────────────────────────────────────────────────────
+export async function crearSolicitudMaterialAction(
+    ticketId: string,
+    items: { inventario_id: string; cantidad: number }[]
+) {
+    try {
+        const supabase = await createClient();
+
+        // 1. Auth
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return { error: 'No estás autenticado.' };
+
+        // 2. Verificar rol Técnico
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('rol, full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (profile?.rol?.toUpperCase() !== 'TECNICO') {
+            return { error: 'Solo los técnicos pueden enviar solicitudes de materiales.' };
+        }
+
+        // 3. Validar que el carrito no esté vacío
+        if (!items || items.length === 0) {
+            return { error: 'La solicitud debe contener al menos un ítem.' };
+        }
+
+        // 4. Validar cantidades
+        for (const item of items) {
+            if (!item.inventario_id || item.cantidad < 1) {
+                return { error: 'Uno o más ítems tienen datos inválidos.' };
+            }
+        }
+
+        // 5. Verificar que el ticket existe y el técnico tiene acceso a él
+        const { data: ticket, error: ticketError } = await supabase
+            .from('tickets')
+            .select('id, estado, agente_asignado_id, creado_por')
+            .eq('id', ticketId)
+            .maybeSingle();
+
+        if (ticketError || !ticket) {
+            return { error: 'Ticket no encontrado.' };
+        }
+
+        // Técnico debe ser el agente asignado o Admin/Coordinador
+        if (ticket.agente_asignado_id !== user.id) {
+            return { error: 'Solo el técnico asignado puede solicitar materiales para este ticket.' };
+        }
+
+        // No permitir solicitudes en tickets cerrados o anulados
+        if (['cerrado', 'resuelto', 'anulado'].includes(ticket.estado)) {
+            return { error: `No se pueden solicitar materiales para un ticket en estado "${ticket.estado}".` };
+        }
+
+        // 6. Verificar que no existe ya una solicitud pendiente para este ticket
+        const { data: solicitudPendiente } = await supabase
+            .from('solicitudes_materiales')
+            .select('id')
+            .eq('ticket_id', ticketId)
+            .eq('tecnico_id', user.id)
+            .eq('estado', 'pendiente')
+            .maybeSingle();
+
+        if (solicitudPendiente) {
+            return {
+                error: 'Ya tienes una solicitud pendiente para este ticket. Espera a que el bodeguero la gestione antes de enviar una nueva.'
+            };
+        }
+
+        // 7. Crear la cabecera de la solicitud
+        const { data: nuevaSolicitud, error: solicitudError } = await supabase
+            .from('solicitudes_materiales')
+            .insert({
+                ticket_id: ticketId,
+                tecnico_id: user.id,
+                estado: 'pendiente',
+            })
+            .select('id')
+            .single();
+
+        if (solicitudError || !nuevaSolicitud) {
+            console.error('Error creando solicitud:', solicitudError);
+            return { error: `Error al crear la solicitud: ${solicitudError?.message}` };
+        }
+
+        // 8. Insertar los ítems del carrito en bulk
+        const itemsPayload = items.map(item => ({
+            solicitud_id: nuevaSolicitud.id,
+            inventario_id: item.inventario_id,
+            cantidad: item.cantidad,
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('solicitud_items')
+            .insert(itemsPayload);
+
+        if (itemsError) {
+            // Intentar limpiar la cabecera si los ítems fallan
+            await supabase.from('solicitudes_materiales').delete().eq('id', nuevaSolicitud.id);
+            console.error('Error insertando ítems:', itemsError);
+            return { error: `Error al guardar los ítems de la solicitud: ${itemsError.message}` };
+        }
+
+        // 9. Registrar evento en el Timeline del Ticket (interno, visible para equipo Systel)
+        const tecnicoNombre = profile.full_name || 'Técnico';
+        const resumenItems = items.map(i => `• ${i.cantidad}x (ID: ${i.inventario_id})`).join('\n');
+
+        await supabase.from('ticket_messages').insert({
+            ticket_id: ticketId,
+            sender_id: user.id,
+            mensaje: `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px;max-width:440px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="font-size:18px;">🛒</span>
+                    <div>
+                        <span style="font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:0.1em;color:#1d4ed8;">Solicitud de Materiales Enviada</span>
+                        <p style="margin:2px 0 0;font-size:12px;font-weight:600;color:#1e3a8a;">${tecnicoNombre} solicitó ${items.length} línea${items.length !== 1 ? 's' : ''} · ${items.reduce((s, i) => s + i.cantidad, 0)} unidad${items.reduce((s, i) => s + i.cantidad, 0) !== 1 ? 'es' : ''} a la bodega</p>
+                    </div>
+                </div>
+                <p style="font-size:10px;color:#3b82f6;font-weight:600;margin:0;">⏳ Esperando aprobación del bodeguero…</p>
+            </div>`,
+            es_sistema: false,
+            es_interno: true,
+            tipo_evento: 'solicitud_pendiente',
+        });
+
+        // 10. Revalidar rutas
+        revalidatePath(`/dashboard/ticket/${ticketId}`);
+        revalidatePath('/dashboard/ticket/[id]', 'page');
+
+        return { success: true, solicitudId: nuevaSolicitud.id };
+
+    } catch (error: any) {
+        console.error('--- ERROR CRÍTICO EN crearSolicitudMaterialAction ---');
+        console.error(error);
+        return { error: error.message || 'Error interno inesperado al crear la solicitud.' };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FLUJO PULL: Obtener catálogo de inventario disponible en Bodega Central
+// Usado por SolicitarMaterialesModal para poblar el catálogo
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getCatalogoInventarioCentralAction() {
+    try {
+        const supabase = await createClient();
+
+        // 1. Auth
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return { error: 'No estás autenticado.', data: [] };
+
+        // 2. Verificar rol (Técnico puede ver el catálogo para solicitar)
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('rol')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        const rolesPermitidos = ['TECNICO', 'ADMIN_BODEGA', 'ADMIN', 'COORDINADOR'];
+        if (!rolesPermitidos.includes(profile?.rol?.toUpperCase() || '')) {
+            return { error: 'Permisos insuficientes.', data: [] };
+        }
+
+        // 3. Obtener IDs de bodegas tipo CENTRAL
+        const { data: bodegas, error: bodegaError } = await supabase
+            .from('bodegas')
+            .select('id')
+            .ilike('tipo', 'CENTRAL');
+
+        if (bodegaError) throw new Error(`Error buscando bodegas: ${bodegaError.message}`);
+        if (!bodegas || bodegas.length === 0) return { data: [] };
+
+        const bodegaIds = bodegas.map((b: any) => b.id);
+
+        // 4. Inventario disponible:
+        //    - Genéricos (es_serializado = false): cantidad > 0
+        //    - Serializados (es_serializado = true): estado 'Disponible' y cantidad > 0
+        const { data: inventario, error: invError } = await supabase
+            .from('inventario')
+            .select('id, modelo, familia, es_serializado, numero_serie, cantidad, estado, bodega_id')
+            .in('bodega_id', bodegaIds)
+            .gt('cantidad', 0)
+            .order('familia', { ascending: true })
+            .order('modelo', { ascending: true });
+
+        if (invError) throw new Error(`Error al obtener inventario: ${invError.message}`);
+
+        // Filtro en memoria: serializados solo si estado = 'Disponible'
+        const disponibles = (inventario || []).filter((item: any) => {
+            if (item.es_serializado) {
+                return item.estado?.toLowerCase() === 'disponible';
+            }
+            return true; // genéricos: cantidad > 0 ya fue filtrado por la query
+        });
+
+        return { data: disponibles };
+
+    } catch (error: any) {
+        console.error('--- ERROR en getCatalogoInventarioCentralAction ---', error);
+        return { error: error.message || 'Error interno al cargar el inventario.', data: [] };
     }
 }

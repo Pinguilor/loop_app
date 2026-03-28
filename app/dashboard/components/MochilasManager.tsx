@@ -343,14 +343,9 @@ export function MochilasManager() {
 
             <div className="flex items-center justify-between mb-4 shrink-0">
                 <h3 className="text-xl font-black text-slate-800 tracking-tight">Interior de Mochila</h3>
-                <div className="flex gap-2">
-                    <button onClick={() => setShowHistoryModal(true)} className="bg-white border border-slate-200 text-slate-600 font-bold py-2.5 px-4 rounded-xl flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm active:scale-95 text-[13px] tracking-wide">
-                        <History className="w-4 h-4"/> Ver Historial
-                    </button>
-                    <button onClick={() => setShowAssignModal(true)} className="bg-slate-900 text-white font-bold py-2.5 px-4 rounded-xl flex items-center gap-2 hover:bg-slate-800 transition-all shadow-sm active:scale-95 text-[13px] tracking-wide">
-                        <Plus className="w-4 h-4"/> Asignar Material
-                    </button>
-                </div>
+                <span className="text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-widest">
+                    Solo lectura · La carga de materiales se gestiona desde Solicitudes
+                </span>
             </div>
 
             <div className="flex-1 bg-white border border-slate-200 rounded-2xl overflow-y-auto shadow-sm flex flex-col">
@@ -359,14 +354,13 @@ export function MochilasManager() {
                         <tr>
                             <th className="px-6 py-4 text-left text-[11px] font-black text-slate-400 uppercase tracking-widest w-full">Repuesto / Modelo</th>
                             <th className="px-6 py-4 text-center text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Cantidad</th>
-                            <th className="px-6 py-4 text-right text-[11px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Acción</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
                         {loadingStock ? (
-                            <tr><td colSpan={3} className="text-center py-16 text-slate-400"><Loader2 className="animate-spin w-8 h-8 mx-auto text-amber-500/50"/></td></tr>
+                            <tr><td colSpan={2} className="text-center py-16 text-slate-400"><Loader2 className="animate-spin w-8 h-8 mx-auto text-amber-500/50"/></td></tr>
                         ) : stock.length === 0 ? (
-                            <tr><td colSpan={3} className="text-center py-16 text-slate-500 font-medium">La mochila está vacía. No tiene stock asignado.</td></tr>
+                            <tr><td colSpan={2} className="text-center py-16 text-slate-500 font-medium">La mochila está vacía. El técnico aún no tiene materiales asignados.</td></tr>
                         ) : (
                             stock.map(item => (
                                 <tr key={item.id} className="hover:bg-slate-50/80 transition-colors group">
@@ -375,22 +369,14 @@ export function MochilasManager() {
                                         <div className="text-[10px] uppercase font-bold text-slate-400 mt-1 font-mono tracking-wider bg-slate-100 border border-slate-200 inline-flex px-2 py-0.5 rounded-md">
                                             FAMILIA: {item.familia}
                                         </div>
+                                        {item.numero_serie && (
+                                            <div className="text-[10px] font-mono text-indigo-600 mt-1">SN: {item.numero_serie}</div>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 text-center whitespace-nowrap">
-                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-50 text-amber-700 font-black text-sm border border-amber-200 shadow-inner group-hover:scale-110 transition-transform">
+                                        <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-amber-50 text-amber-700 font-black text-sm border border-amber-200 shadow-inner">
                                             {item.cantidad}
                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        <div className="flex justify-end">
-                                            <button 
-                                                onClick={() => handleReturn(item.id)}
-                                                className="text-amber-500 hover:text-white bg-amber-50 hover:bg-amber-500 p-2.5 rounded-xl transition-all inline-flex justify-center items-center active:scale-95 border border-amber-100/50 hover:border-amber-600 shadow-sm"
-                                                title="Devolver a Central"
-                                            >
-                                                <ArrowLeftRight className="w-4 h-4"/>
-                                            </button>
-                                        </div>
                                     </td>
                                 </tr>
                             ))

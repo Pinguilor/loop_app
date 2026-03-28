@@ -74,7 +74,6 @@ export async function GET() {
         for (let i = 0; i < 50; i++) {
             const ticket_id = uuidv4();
             const fechaCreacion = getRandomDateWithinLastDays(30);
-            const slaDate = new Date(new Date(fechaCreacion).getTime() + 4 * 60 * 60 * 1000).toISOString();
 
             const titulo = getRandom(TITULOS).replace(/'/g, "''");
             const descripcion = `<p>${getRandom(DESCRIPCIONES)}</p>`.replace(/'/g, "''");
@@ -84,8 +83,8 @@ export async function GET() {
             const catalogo_id = getRandom(catalogos).id;
             const zona_id = getRandom(zonas).id;
 
-            sqlQuery += `INSERT INTO tickets (id, titulo, descripcion, prioridad, estado, creado_por, restaurante_id, catalogo_servicio_id, zona_id, fecha_creacion, vencimiento_sla)\n`;
-            sqlQuery += `VALUES ('${ticket_id}', '${titulo}', '${descripcion}', '${prioridad}', '${estado}', '${usuario_id}', '${restaurante_id}', '${catalogo_id}', '${zona_id}', '${fechaCreacion}', '${slaDate}');\n\n`;
+            sqlQuery += `INSERT INTO tickets (id, titulo, descripcion, prioridad, estado, creado_por, restaurante_id, catalogo_servicio_id, zona_id, fecha_creacion)\n`;
+            sqlQuery += `VALUES ('${ticket_id}', '${titulo}', '${descripcion}', '${prioridad}', '${estado}', '${usuario_id}', '${restaurante_id}', '${catalogo_id}', '${zona_id}', '${fechaCreacion}');\n\n`;
 
             const numMessages = Math.floor(Math.random() * 6) + 3;
             let messageDate = new Date(fechaCreacion);

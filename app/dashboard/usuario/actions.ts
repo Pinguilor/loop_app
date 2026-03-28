@@ -87,17 +87,6 @@ export async function createTicketAction(formData: FormData) {
         fileUrls.push(publicUrl);
     }
 
-    const getSLAHours = (p: string) => {
-        switch (p) {
-            case 'crítica': return 4;
-            case 'alta': return 24;
-            case 'media': return 48;
-            case 'baja': return 72;
-            default: return 72;
-        }
-    };
-    const vencimiento_sla = new Date(Date.now() + getSLAHours(prioridad) * 60 * 60 * 1000).toISOString();
-
     // 4. Insert database record (tickets table)
     const { error: insertError } = await supabase
         .from('tickets')
@@ -116,7 +105,6 @@ export async function createTicketAction(formData: FormData) {
             estado: 'esperando_agente', // Setting correct status as defined earlier
             creado_por: user.id, // Maps to user's profile ID
             adjuntos: fileUrls.length > 0 ? fileUrls : null,
-            vencimiento_sla,
         });
 
     if (insertError) {
@@ -124,16 +112,20 @@ export async function createTicketAction(formData: FormData) {
         return { error: `Error creando ticket: ${insertError.message}` };
     }
 
-    // --- NOTIFY ALL AGENTS ---
+    // --- NOTIFY ADMINS & COORDINADORES (técnicos solo se notifican al asignarles) ---
     const { data: newTicket } = await supabase.from('tickets').select('numero_ticket').eq('id', ticketId).single();
     if (newTicket) {
-        const { data: agents } = await supabase.from('profiles').select('id').eq('rol', 'tecnico');
-        if (agents && agents.length > 0) {
-            const notifications = agents.map(agent => ({
-                user_id: agent.id,
+        const { data: adminProfiles } = await supabase
+            .from('profiles')
+            .select('id')
+            .in('rol', ['admin', 'coordinador']);
+        if (adminProfiles && adminProfiles.length > 0) {
+            const notifications = adminProfiles.map(p => ({
+                user_id: p.id,
                 ticket_id: ticketId,
                 mensaje: `Nueva solicitud ingresada: NC-${newTicket.numero_ticket}`,
-                leida: false
+                leida: false,
+                tipo: 'nuevo_ticket',
             }));
             await supabase.from('notifications').insert(notifications);
         }

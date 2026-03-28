@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Ticket } from '@/types/database.types';
-import { FileText, Image as ImageIcon, FileSpreadsheet, File, MessageSquare, Search, ChevronLeft, ChevronRight, User, CornerDownRight } from 'lucide-react';
+import { FileText, Image as ImageIcon, FileSpreadsheet, File, MessageSquare, Search, ChevronLeft, ChevronRight, User, CornerDownRight, Building2 } from 'lucide-react';
 import Link from 'next/link';
 
 const ITEMS_PER_PAGE = 25;
@@ -45,7 +45,8 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                 const matchDesc = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
                 const matchName = (ticket.profiles?.full_name || '').toLowerCase().includes(lowerSearch);
                 const matchRestaurante = (ticket.restaurantes?.nombre_restaurante || '').toLowerCase().includes(lowerSearch);
-                return matchId || matchTitle || matchDesc || matchName || matchRestaurante;
+                const matchCliente = ((ticket as any).clientes?.nombre_fantasia || '').toLowerCase().includes(lowerSearch);
+                return matchId || matchTitle || matchDesc || matchName || matchRestaurante || matchCliente;
             });
         }
 
@@ -90,42 +91,6 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
         if (ext.includes('jpg') || ext.includes('jpeg') || ext.includes('png')) return <ImageIcon className="w-4 h-4" />;
         if (ext.includes('xlsx') || ext.includes('csv')) return <FileSpreadsheet className="w-4 h-4" />;
         return <File className="w-4 h-4" />;
-    };
-
-    // Función extraída para calcular el SLA y renderizar la pastilla
-    const renderSlaBadge = (ticket: Ticket, isCompound = false) => {
-        const shape = isCompound ? 'rounded-r-md border border-l-0 text-[10px]' : 'rounded text-[9px] sm:text-[10px] shadow-sm border';
-        const dbSlaStatus = (ticket as any).slaStatus;
-        
-        if (dbSlaStatus) {
-            const statusStr = String(dbSlaStatus).toLowerCase();
-            if (statusStr.includes('incumplido')) {
-                return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-red-100 text-red-700 border-red-200 tracking-wide uppercase whitespace-nowrap`}>{dbSlaStatus}</span>;
-            } else if (statusStr.includes('cumplido')) {
-                return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-green-100 text-green-700 border-green-200 tracking-wide uppercase whitespace-nowrap`}>{dbSlaStatus}</span>;
-            }
-            return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-gray-100 text-gray-700 border-gray-200 tracking-wide uppercase whitespace-nowrap`}>{dbSlaStatus}</span>;
-        }
-
-        if (!ticket.vencimiento_sla) return null;
-
-        const isResolved = ticket.estado === 'resuelto' || ticket.estado === 'cerrado' || ticket.estado === 'anulado';
-        const sla = new Date(ticket.vencimiento_sla);
-
-        if (isResolved) {
-            let resolutionDate = new Date(ticket.actualizado_en);
-            if (ticket.fecha_resolucion) {
-                resolutionDate = new Date(ticket.fecha_resolucion);
-            }
-            return resolutionDate <= sla
-                ? <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-green-100 text-green-700 border-green-200 tracking-wide uppercase whitespace-nowrap`}>SLA Cumplido</span>
-                : <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-red-100 text-red-700 border-red-200 tracking-wide uppercase whitespace-nowrap`}>SLA Incumplido</span>;
-        }
-
-        const diffHours = (sla.getTime() - new Date().getTime()) / (1000 * 60 * 60);
-        if (diffHours < 0) return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-red-100 text-red-700 border-red-200 tracking-wide uppercase whitespace-nowrap`}>Vencido hace {Math.abs(Math.round(diffHours))}h</span>;
-        if (diffHours <= 12) return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-orange-100 text-orange-700 border-orange-200 tracking-wide uppercase whitespace-nowrap`}>Vence en {Math.round(diffHours)}h</span>;
-        return <span className={`inline-flex items-center px-2 py-0.5 ${shape} font-bold bg-green-100 text-green-700 border-green-200 tracking-wide uppercase whitespace-nowrap`}>Vence en {Math.round(diffHours)}h</span>;
     };
 
     return (
@@ -194,10 +159,10 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                         <tr>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ID / Fecha</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuario</th>
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asunto</th>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Prioridad / SLA</th>
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Prioridad</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Estado</th>
-                            <th scope="col" className="px-6 py-4 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Acción</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
@@ -253,6 +218,20 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                                         </div>
                                     </td>
 
+                                    {/* Cliente */}
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        {(ticket as any).clientes?.nombre_fantasia ? (
+                                            <div className="flex items-center gap-2">
+                                                <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]" title={(ticket as any).clientes.nombre_fantasia}>
+                                                    {(ticket as any).clientes.nombre_fantasia}
+                                                </span>
+                                            </div>
+                                        ) : (
+                                            <span className="text-xs text-slate-300 font-medium">—</span>
+                                        )}
+                                    </td>
+
                                     <td className="px-6 py-4 max-w-xs">
                                         <div className="text-sm font-bold text-gray-900 mb-1.5 truncate group-hover:text-emerald-600 transition-colors">
                                             {ticket.titulo}
@@ -289,20 +268,11 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                                     </td>
 
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex flex-col gap-2 items-start">
-                                            {getPriorityBadge(ticket.prioridad)}
-                                            {renderSlaBadge(ticket)}
-                                        </div>
+                                        {getPriorityBadge(ticket.prioridad)}
                                     </td>
 
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {getStatusBadge(ticket.estado)}
-                                    </td>
-
-                                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <span className="text-emerald-600 hover:text-emerald-900 bg-emerald-50 px-3 py-1 rounded-md opacity-0 group-hover:opacity-100 transition-opacity">
-                                            Ver detalle &rarr;
-                                        </span>
                                     </td>
                                 </tr>
                             ))
@@ -364,8 +334,14 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                                 {ticket.titulo}
                             </div>
 
-                            {/* Fila 3: Ubicación y Categoría */}
+                            {/* Fila 3: Ubicación, Cliente y Categoría */}
                             <div className="flex flex-col gap-1.5 text-[11px] text-slate-500">
+                                {(ticket as any).clientes?.nombre_fantasia && (
+                                    <span className="font-bold text-violet-700 flex items-center gap-1.5 bg-violet-50 px-2.5 py-1 w-max rounded-lg border border-violet-100">
+                                        <Building2 className="w-3 h-3 text-violet-400 shrink-0" />
+                                        {(ticket as any).clientes.nombre_fantasia}
+                                    </span>
+                                )}
                                 {ticket.restaurantes?.nombre_restaurante && (
                                     <span className="font-bold text-slate-700 flex items-center gap-1.5 bg-slate-50 px-2.5 py-1 w-max rounded-lg border border-slate-100">
                                         📍 {ticket.restaurantes.nombre_restaurante}
@@ -381,8 +357,7 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                             {/* Fila 4: Badges Consolidados como un solo elemento visual */}
                             <div className="flex items-center justify-between gap-3 mt-1.5 pt-3.5 border-t border-slate-50">
                                 <div className="flex items-center shadow-sm rounded-md hover:shadow transition-shadow">
-                                    {getPriorityBadge(ticket.prioridad, true)}
-                                    {renderSlaBadge(ticket, true)}
+                                    {getPriorityBadge(ticket.prioridad)}
                                 </div>
                                 <div className="shrink-0 flex items-center justify-end">
                                     {getStatusBadge(ticket.estado)}

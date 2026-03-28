@@ -55,3 +55,18 @@ export async function markNotificationReadAction(notificationId: string, shouldR
 
     return { success: true };
 }
+
+export async function markAllNotificationsReadAction() {
+    const supabase = await createClient();
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { error: 'No estás autenticado.' };
+
+    await supabase
+        .from('notifications')
+        .update({ leida: true })
+        .eq('user_id', user.id)
+        .eq('leida', false);
+
+    return { success: true };
+}

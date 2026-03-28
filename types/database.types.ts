@@ -48,7 +48,6 @@ export interface TicketInsert {
   estado?: TicketStatus;
   creado_por: string; // References profiles
   adjuntos?: string[]; // URLs from bucket
-  vencimiento_sla?: string; // Timestamp for SLA
   agente_asignado_id?: string | null; // References profiles
   restaurante_id: string; // References restaurantes
   catalogo_servicio_id: string; // References catalogo_servicios
@@ -119,6 +118,7 @@ export interface Notification {
   mensaje: string;
   leida: boolean;
   creado_en: string;
+  tipo?: string;
 }
 
 // NUEVAS TABLAS PARA FIELD SERVICE

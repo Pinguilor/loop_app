@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
     const { supabaseResponse, user, supabase } = await updateSession(request)
 
     const url = request.nextUrl.clone()
@@ -28,7 +28,7 @@ export async function middleware(request: NextRequest) {
             .eq('id', user.id)
             .maybeSingle()
 
-        // Fallback to metadata if profile is not found for some reason, 
+        // Fallback to metadata if profile is not found for some reason,
         // but prefer database source of truth.
         const rawRol = profile?.rol || user.user_metadata?.rol;
         const rol = typeof rawRol === 'string' ? rawRol.toLowerCase() : '';
@@ -56,6 +56,11 @@ export async function middleware(request: NextRequest) {
 
         // Shared route bypass: Permitir acceso a Analíticas y Perfil a cualquier usuario autenticado
         if (url.pathname.startsWith('/dashboard/analiticas') || url.pathname.startsWith('/dashboard/perfil')) {
+            return supabaseResponse;
+        }
+
+        // Shared route bypass: Configuración (admin-only, validado dentro de la página)
+        if (url.pathname.startsWith('/dashboard/configuracion')) {
             return supabaseResponse;
         }
 

@@ -4,11 +4,12 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction, updateChildTicketDescription } from '../actions';
-import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar, AlertTriangle, Pencil, Link2 } from 'lucide-react';
+import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar, AlertTriangle, Pencil, Link2, ClipboardPen, Lock } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SmartCloseModal } from './SmartCloseModal';
 import { ActaCierrePDF } from './ActaCierrePDF';
 import { AnularTicketModal } from './AnularTicketModal';
+import { SolicitarMaterialesModal } from './SolicitarMaterialesModal';
 import 'react-quill-new/dist/quill.snow.css';
 import imageCompression from 'browser-image-compression';
 
@@ -67,6 +68,11 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
     // Smart Close logic
     const [showSmartClose, setShowSmartClose] = useState(false);
+
+    // Solicitar Materiales (Flujo Pull)
+    const [showSolicitarModal, setShowSolicitarModal] = useState(false);
+    const isTicketCerrado = ['cerrado', 'resuelto', 'anulado'].includes(ticket.estado);
+    const isTecnicoAsignado = isAgent && ticket.agente_asignado_id === currentUserId;
 
     // Child ticket description edition
     const [isEditingDesc, setIsEditingDesc] = useState(false);
@@ -469,27 +475,51 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                                 <div className="bg-slate-50 p-3 sm:p-2 border-t border-slate-200 shrink-0 flex items-end sm:items-center justify-between gap-2">
                                     <div className="flex items-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => fileInputRef.current?.click()}
-                                            className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-300 bg-gray-100"
-                                        >
-                                            <Paperclip className="w-4 h-4" />
-                                            <span className="hidden sm:inline">Adjuntar</span>
-                                        </button>
+                            {/* ── BOTÓN SOLICITAR MATERIALES (TÉCNICO ASIGNADO) ── */}
+                            {isTecnicoAsignado && !isTicketCerrado && (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowSolicitarModal(true)}
+                                    className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-200 bg-indigo-50/50"
+                                >
+                                    <ClipboardPen className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Solicitar Materiales</span>
+                                </button>
+                            )}
+
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="flex items-center gap-2 px-3 py-2 text-sm font-bold text-gray-500 hover:text-indigo-600 hover:bg-white rounded-lg transition-colors border border-transparent hover:border-gray-300 bg-gray-100"
+                            >
+                                <Paperclip className="w-4 h-4" />
+                                <span className="hidden sm:inline">Adjuntar</span>
+                            </button>
                                     </div>
 
                                     <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4 w-auto">
                                         {(isAgent || isAdmin) && (
-                                            <label className="flex items-center gap-1.5 cursor-pointer select-none group px-2 py-1 rounded hover:bg-white/50 transition-colors">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isInternalNote}
-                                                    onChange={(e) => setIsInternalNote(e.target.checked)}
-                                                    className="w-4 h-4 rounded text-orange-500 focus:ring-orange-500 border-gray-300"
-                                                />
-                                                <span className="text-[11px] sm:text-xs font-bold text-slate-600 group-hover:text-slate-900 flex items-center">🔒 Nota Interna <span className="font-normal text-slate-400 hidden lg:inline ml-1">(Solo equipo Systel)</span></span>
-                                            </label>
+                                            <button
+                                                type="button"
+                                                role="switch"
+                                                aria-checked={isInternalNote}
+                                                onClick={() => setIsInternalNote(v => !v)}
+                                                className="flex items-center gap-2.5 cursor-pointer select-none px-2.5 py-1.5 rounded-lg hover:bg-white/60 transition-colors"
+                                            >
+                                                {/* Track */}
+                                                <span className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${isInternalNote ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                                                    {/* Thumb */}
+                                                    <span className={`inline-flex h-3.5 w-3.5 items-center justify-center transform rounded-full bg-white shadow-sm transition-transform duration-200 ${isInternalNote ? 'translate-x-4' : 'translate-x-0.5'}`}>
+                                                        {isInternalNote && <Lock className="w-2 h-2 text-indigo-600" />}
+                                                    </span>
+                                                </span>
+                                                <span className={`text-[11px] sm:text-xs font-bold transition-colors duration-200 ${isInternalNote ? 'text-indigo-700' : 'text-slate-500'}`}>
+                                                    {isInternalNote
+                                                        ? <><span>Nota Interna</span><span className="font-normal text-slate-400 hidden lg:inline ml-1">(solo staff Systel)</span></>
+                                                        : 'Nota Pública (visible para cliente)'
+                                                    }
+                                                </span>
+                                            </button>
                                         )}
                                         <div className="flex items-center h-10 w-full sm:w-auto relative">
                                             <button
@@ -777,6 +807,13 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                 <AnularTicketModal
                     ticketId={ticket.id}
                     onClose={() => setShowAnularModal(false)}
+                />
+            )}
+
+            {showSolicitarModal && (
+                <SolicitarMaterialesModal
+                    ticketId={ticket.id}
+                    onClose={() => setShowSolicitarModal(false)}
                 />
             )}
         </div>

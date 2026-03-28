@@ -44,6 +44,9 @@ export default async function TrazabilidadPage() {
     // Regla: solo serializados (es_serializado = true), solo destino tipo 'Local',
     //        agrupamos en JS por restaurante_id eliminando los sin nombre.
 
+    // Ruta: movimientos_inventario → inventario (es_serializado) + bodegas_destino (tipo=Local)
+    //        + tickets → restaurantes (nombre, sigla)  +  profiles (técnico)
+    // Se usa tickets→restaurantes en lugar de bodegas.local_id porque local_id puede ser null.
     const { data: movimientos, error } = await supabase
         .from('movimientos_inventario')
         .select(`
@@ -61,11 +64,15 @@ export default async function TrazabilidadPage() {
             ),
             bodega_destino:bodegas!movimientos_inventario_bodega_destino_id_fkey (
                 id,
-                tipo,
-                local_id
+                tipo
             ),
-            tickets (
-                numero_ticket
+            tickets!inner (
+                numero_ticket,
+                restaurantes (
+                    id,
+                    nombre_restaurante,
+                    sigla
+                )
             ),
             profiles:realizado_por (
                 full_name
@@ -81,37 +88,14 @@ export default async function TrazabilidadPage() {
     // ── Filtrar: solo movimientos cuyo destino es una bodega tipo Local ──────
     const soloLocales = (movimientos || []).filter((m: any) => {
         const tipo = m.bodega_destino?.tipo?.toUpperCase();
-        return tipo === 'LOCAL' && m.bodega_destino?.local_id;
+        return tipo === 'LOCAL' && m.tickets?.restaurantes;
     });
-
-    // ── Enriquecer con datos del restaurante ─────────────────────────────────
-    // Obtenemos los restaurante IDs únicos para traer nombres en una sola query
-    const localIds: string[] = [...new Set(
-        soloLocales.map((m: any) => m.bodega_destino.local_id as string)
-    )];
-
-    let restaurantesMap: Record<string, { nombre: string; sigla: string }> = {};
-
-    if (localIds.length > 0) {
-        const { data: restaurantes } = await supabase
-            .from('restaurantes')
-            .select('id, nombre_restaurante, sigla')
-            .in('id', localIds);
-
-        (restaurantes || []).forEach((r: any) => {
-            restaurantesMap[r.id] = {
-                nombre: r.nombre_restaurante,
-                sigla: r.sigla ?? '',
-            };
-        });
-    }
 
     // ── Construir lista tipada ────────────────────────────────────────────────
     const serializados: SerializadoInstalado[] = soloLocales
         .map((m: any) => {
-            const restauranteId = m.bodega_destino.local_id as string;
-            const restaurante = restaurantesMap[restauranteId];
-            if (!restaurante) return null; // restaurante sin registro, excluir
+            const restaurante = m.tickets?.restaurantes;
+            if (!restaurante) return null;
 
             return {
                 inventario_id: m.inventario_id,
@@ -122,9 +106,9 @@ export default async function TrazabilidadPage() {
                 ticket_id: m.ticket_id,
                 ticket_numero: m.tickets?.numero_ticket ?? 0,
                 tecnico_nombre: m.profiles?.full_name ?? 'Desconocido',
-                restaurante_id: restauranteId,
-                restaurante_nombre: restaurante.nombre,
-                restaurante_sigla: restaurante.sigla,
+                restaurante_id: restaurante.id,
+                restaurante_nombre: restaurante.nombre_restaurante,
+                restaurante_sigla: restaurante.sigla ?? '',
             } satisfies SerializadoInstalado;
         })
         .filter(Boolean) as SerializadoInstalado[];

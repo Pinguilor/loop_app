@@ -648,30 +648,48 @@ export async function smartCloseAction(formData: FormData) {
 
         console.log('✅ Bodega Local Encontrada:', bodegaLocalId);
 
-        // 2. Transferencia de Equipos Nuevos vinculados directamente al ticket_id (En Tránsito -> Operativo)
-        console.log(`Buscando equipos en_transito asociados al ticket_id ${ticketId} en tabla inventario...`);
+        // 2. Transferencia de Equipos: instalar en la bodega del local
+        // Fuente primaria: IDs que el técnico marcó como instalados en el modal (flujo solicitud→mochila→campo).
+        // Fallback: items con ticket_id + estado En Tránsito (flujo de asignación directa legacy).
+        console.log(`Procesando instalación de equipos para ticket ${ticketId}...`);
         let equiposActualizados = 0;
 
-        // Filtramos directamente en inventario los equipos asignados a este ticket
-        const { data: equiposEnTransito, error: invErr } = await supabase
-            .from('inventario')
-            .select('id, cantidad, bodega_id, estado, ticket_id')
-            .eq('ticket_id', ticketId)
-            .in('estado', ['En Tránsito', 'en_transito', 'En transito', 'en_Transito']);
+        let equiposAInstalar: any[] = [];
 
-        if (invErr) throw new Error(`Error al buscar inventario en tránsito mediante ticket_id: ${invErr.message}`);
+        if (materialInstaladoIds.length > 0) {
+            // Flujo principal: el técnico seleccionó los equipos explícitamente en el modal
+            const { data: itemsFromForm, error: formErr } = await supabase
+                .from('inventario')
+                .select('id, cantidad, bodega_id, estado, ticket_id')
+                .in('id', materialInstaladoIds);
 
-        if (equiposEnTransito && equiposEnTransito.length > 0) {
-            const idsAActualizar = equiposEnTransito.map(eq => eq.id);
-            console.log(`Equipos en tránsito encontrados: ${idsAActualizar.length}. Ejecutando UPDATE explícito...`);
+            if (formErr) throw new Error(`Error al obtener equipos seleccionados: ${formErr.message}`);
+            equiposAInstalar = itemsFromForm || [];
+            console.log(`${equiposAInstalar.length} equipos seleccionados por el técnico para instalar.`);
+        } else {
+            // Flujo legacy: buscar por ticket_id + estado en tránsito (asignación directa)
+            const { data: enTransito, error: invErr } = await supabase
+                .from('inventario')
+                .select('id, cantidad, bodega_id, estado, ticket_id')
+                .eq('ticket_id', ticketId)
+                .in('estado', ['En Tránsito', 'en_transito', 'En transito', 'en_Transito']);
 
-            // 2.A: UPDATE EXPLÍCITO A INVENTARIO USANDO ticket_id
+            if (invErr) throw new Error(`Error al buscar inventario en tránsito: ${invErr.message}`);
+            equiposAInstalar = enTransito || [];
+            console.log(`Flujo legacy: ${equiposAInstalar.length} equipos en tránsito encontrados.`);
+        }
+
+        if (equiposAInstalar.length > 0) {
+            const idsAActualizar = equiposAInstalar.map(eq => eq.id);
+            console.log(`Ejecutando UPDATE de ${idsAActualizar.length} equipos → Operativo en bodega local...`);
+
+            // 2.A: Mover al local y marcar como Operativo
             const { error: updErr } = await supabase
                 .from('inventario')
                 .update({
                     estado: 'Operativo',
                     bodega_id: bodegaLocalId,
-                    ticket_id: null // Liberar el ticket_id
+                    ticket_id: null
                 })
                 .in('id', idsAActualizar);
 
@@ -682,8 +700,8 @@ export async function smartCloseAction(formData: FormData) {
 
             equiposActualizados = idsAActualizar.length;
 
-            // 2.B: Registrar los movimientos de entrada a la bodega del local
-            for (const eq of equiposEnTransito) {
+            // 2.B: Registrar movimientos de entrada a la bodega del local
+            for (const eq of equiposAInstalar) {
                 await supabase.from('movimientos_inventario').insert({
                     inventario_id: eq.id,
                     ticket_id: ticketId,
@@ -695,7 +713,7 @@ export async function smartCloseAction(formData: FormData) {
                 });
             }
         } else {
-            console.log('No se encontraron equipos con ticket_id asociado y en estado en_transito.');
+            console.log('No se encontraron equipos para instalar en este ticket.');
         }
 
         console.log(`✅ ${equiposActualizados} equipos transferidos exitosamente a 'Operativo' en la Bodega ${bodegaLocalId}.`);

@@ -527,21 +527,83 @@ export async function closeTicketWithActaAction(
         const restaurante = Array.isArray(ticketData?.restaurantes) ? ticketData?.restaurantes[0] : ticketData?.restaurantes;
         const bodegaId = restaurante?.bodega_id;
 
-        // 2. Actualización Logística (Inventario)
+        // 2. Actualización Logística (Inventario + Movimientos)
         if (bodegaId) {
-            const { error: invError } = await supabase.from('inventario')
-                .update({
-                    estado: 'operativo' as any,
-                    bodega_id: bodegaId,
-                    ticket_id: ticketId // Garantizando persistencia férrea
-                })
-                .eq('ticket_id', ticketId)
-                .in('estado', ['en_transito', 'En Tránsito'])
-                .select();
+            // Obtener todos los inventario_ids vinculados a este ticket
+            // vía movimientos_inventario (cubre tanto flujo directo como solicitud→mochila)
+            const { data: movsPrevios } = await supabase
+                .from('movimientos_inventario')
+                .select('inventario_id')
+                .eq('ticket_id', ticketId);
 
-            if (invError) {
-                throw new Error(`Error en actualización logística: ${invError.message}`);
+            const inventarioIds = [...new Set(
+                (movsPrevios || []).map((m: any) => m.inventario_id).filter(Boolean) as string[]
+            )];
+
+            console.log(`--- LOGÍSTICA closeTicketWithActaAction ---`);
+            console.log(`Equipos vinculados al ticket (via movimientos): ${inventarioIds.length}`);
+            console.log(`bodegaId destino (local restaurante): ${bodegaId}`);
+
+            if (inventarioIds.length > 0) {
+                // Obtener datos actuales de esos items (bodega_id actual = origen del movimiento)
+                const { data: equipos } = await supabase
+                    .from('inventario')
+                    .select('id, cantidad, bodega_id')
+                    .in('id', inventarioIds);
+
+                // Mover al local y marcar como operativo
+                const { error: invError } = await supabase.from('inventario')
+                    .update({ estado: 'operativo' as any, bodega_id: bodegaId, ticket_id: null })
+                    .in('id', inventarioIds);
+
+                if (invError) throw new Error(`Error en actualización logística: ${invError.message}`);
+
+                // Crear movimiento de instalación (origen→local) para cada equipo
+                for (const eq of (equipos || [])) {
+                    const { error: movErr } = await supabase.from('movimientos_inventario').insert({
+                        inventario_id: eq.id,
+                        ticket_id: ticketId,
+                        tipo_movimiento: 'salida',
+                        bodega_origen_id: eq.bodega_id,
+                        bodega_destino_id: bodegaId,
+                        cantidad: eq.cantidad,
+                        fecha_movimiento: new Date().toISOString(),
+                        realizado_por: user.id
+                    });
+                    if (movErr) {
+                        console.error(`❌ Error insertando movimiento para ${eq.id}:`, movErr.message);
+                    } else {
+                        console.log(`✅ Movimiento LOCAL creado: inventario_id=${eq.id} → bodega_destino=${bodegaId}`);
+                    }
+                }
+            } else {
+                // Fallback: flujo legacy por ticket_id + estado en_transito
+                const { data: equiposLegacy } = await supabase.from('inventario')
+                    .select('id, cantidad, bodega_id')
+                    .eq('ticket_id', ticketId)
+                    .in('estado', ['en_transito', 'En Tránsito']);
+
+                if (equiposLegacy && equiposLegacy.length > 0) {
+                    await supabase.from('inventario')
+                        .update({ estado: 'operativo' as any, bodega_id: bodegaId, ticket_id: null })
+                        .in('id', equiposLegacy.map(e => e.id));
+
+                    for (const eq of equiposLegacy) {
+                        await supabase.from('movimientos_inventario').insert({
+                            inventario_id: eq.id,
+                            ticket_id: ticketId,
+                            tipo_movimiento: 'salida',
+                            bodega_origen_id: eq.bodega_id,
+                            bodega_destino_id: bodegaId,
+                            cantidad: eq.cantidad,
+                            fecha_movimiento: new Date().toISOString(),
+                            realizado_por: user.id
+                        });
+                    }
+                }
+                console.log(`Flujo legacy: ${equiposLegacy?.length ?? 0} equipos en tránsito procesados.`);
             }
+            console.log(`--- FIN LOGÍSTICA ---`);
         }
 
         // 3. Historial (Timeline)
@@ -656,6 +718,9 @@ export async function smartCloseAction(formData: FormData) {
 
         let equiposAInstalar: any[] = [];
 
+        console.log(`materialInstaladoIds recibidos: ${JSON.stringify(materialInstaladoIds)}`);
+        console.log(`bodegaLocalId (destino del restaurante): ${bodegaLocalId}`);
+
         if (materialInstaladoIds.length > 0) {
             // Flujo principal: el técnico seleccionó los equipos explícitamente en el modal
             const { data: itemsFromForm, error: formErr } = await supabase
@@ -702,7 +767,7 @@ export async function smartCloseAction(formData: FormData) {
 
             // 2.B: Registrar movimientos de entrada a la bodega del local
             for (const eq of equiposAInstalar) {
-                await supabase.from('movimientos_inventario').insert({
+                const { error: movErr } = await supabase.from('movimientos_inventario').insert({
                     inventario_id: eq.id,
                     ticket_id: ticketId,
                     bodega_origen_id: eq.bodega_id,
@@ -711,6 +776,11 @@ export async function smartCloseAction(formData: FormData) {
                     fecha_movimiento: new Date().toISOString(),
                     realizado_por: user.id
                 });
+                if (movErr) {
+                    console.error(`❌ ERROR insertando movimiento para inventario_id ${eq.id}:`, movErr.message);
+                } else {
+                    console.log(`✅ Movimiento LOCAL creado: inventario_id=${eq.id} → bodega_destino=${bodegaLocalId}`);
+                }
             }
         } else {
             console.log('No se encontraron equipos para instalar en este ticket.');
@@ -1302,4 +1372,78 @@ export async function getCatalogoInventarioCentralAction() {
         console.error('--- ERROR en getCatalogoInventarioCentralAction ---', error);
         return { error: error.message || 'Error interno al cargar el inventario.', data: [] };
     }
+}
+
+export async function asignarViaticoAction(
+    ticketId: string,
+    monto: number,
+    comentario: string
+) {
+    const supabase = await createClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) return { error: 'No estás autenticado.' };
+
+    const { data: profileData } = await supabase.from('profiles').select('rol').eq('id', user.id).maybeSingle();
+    const userRole = profileData?.rol?.toLowerCase() ?? '';
+    if (!['admin', 'coordinador'].includes(userRole)) return { error: 'Sin permisos para asignar viáticos.' };
+
+    const { data: ticket } = await supabase
+        .from('tickets')
+        .select('numero_ticket, agente_asignado_id, restaurantes(nombre_restaurante)')
+        .eq('id', ticketId)
+        .maybeSingle();
+
+    if (!ticket) return { error: 'Ticket no encontrado.' };
+    if (!ticket.agente_asignado_id) return { error: 'El ticket no tiene técnico asignado.' };
+
+    // Obtener email del técnico vía admin API (profiles no almacena email)
+    const { createClient: createSupabaseAdminClient } = await import('@supabase/supabase-js');
+    const adminSupabase = createSupabaseAdminClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data: authUserData } = await adminSupabase.auth.admin.getUserById(ticket.agente_asignado_id);
+    const emailTecnico = authUserData?.user?.email;
+    if (!emailTecnico) return { error: 'No se pudo obtener el email del técnico.' };
+
+    const restaurante = (ticket.restaurantes as any)?.nombre_restaurante ?? 'Sin restaurante';
+    const apiUrl = process.env.RINDEVIATICOS_API_URL;
+    const secret = process.env.RINDEVIATICOS_SECRET;
+    if (!apiUrl || !secret) return { error: 'Configuración de RindeViaticos no disponible en el servidor.' };
+
+    let apiResponse: Response;
+    try {
+        apiResponse = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${secret}`,
+            },
+            body: JSON.stringify({
+                email_tecnico: emailTecnico,
+                monto,
+                restaurante,
+                numero_ticket: ticket.numero_ticket,
+            }),
+        });
+    } catch (err: any) {
+        return { error: `Error de conexión con RindeViaticos: ${err.message}` };
+    }
+
+    if (!apiResponse.ok) {
+        const body = await apiResponse.text().catch(() => '');
+        return { error: `RindeViaticos respondió con error ${apiResponse.status}: ${body}` };
+    }
+
+    // Registrar nota interna en el historial del ticket
+    await supabase.from('ticket_messages').insert({
+        ticket_id: ticketId,
+        sender_id: user.id,
+        mensaje: `Viático de $${monto} asignado. Comentario: ${comentario}`,
+        es_sistema: true,
+        es_interno: true,
+    });
+
+    revalidatePath(`/dashboard/ticket/${ticketId}`);
+    return { success: true };
 }

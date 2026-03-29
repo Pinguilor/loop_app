@@ -164,7 +164,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
                 {/* Main Two-Column Layout */}
-                <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+                <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 lg:items-start">
 
                     {/* Left Column: Timeline & Chat */}
                     <div className="flex-1 min-w-0">
@@ -181,7 +181,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
                     </div>
 
                     {/* Right Column: Properties Sidebar */}
-                    <div className="w-full lg:w-80 shrink-0">
+                    <div className="w-full lg:w-80 shrink-0 lg:sticky lg:top-6">
                         <TicketSidebar
                             ticket={ticket}
                             isAgent={isAgent}

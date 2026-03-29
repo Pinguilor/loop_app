@@ -66,27 +66,9 @@ export function CloseTicketModal({ isOpen, onClose, ticket, materiales = [], onC
         setIsLocating(true);
         setGpsError('');
 
+        // GPS DESACTIVADO TEMPORALMENTE PARA DEBUG
         let lat = 0;
         let lng = 0;
-
-        try {
-            const position = await obtenerUbicacion();
-            lat = position.coords.latitude;
-            lng = position.coords.longitude;
-        } catch (error: any) {
-            console.error('GPS Validation Failed:', error);
-            let mensajeError = 'Error: Es obligatorio registrar la ubicación GPS real para finalizar el servicio. Activa la ubicación de tu dispositivo.';
-            
-            // Provides contextual errors for better UX debugging
-            if (error.code === 1) mensajeError = 'Permiso denegado: Es obligatorio dar acceso al GPS para finalizar.';
-            else if (error.code === 2) mensajeError = 'GPS no disponible: Comprueba tu señal o reinicia la ubicación.';
-            else if (error.code === 3) mensajeError = 'Tiempo agotado: No se pudo obtener la ubicación a tiempo.';
-
-            setGpsError(mensajeError);
-            setIsLocating(false);
-            setIsSubmitting(false);
-            return; // ABORT SUBMISSION
-        }
 
         setIsLocating(false);
 

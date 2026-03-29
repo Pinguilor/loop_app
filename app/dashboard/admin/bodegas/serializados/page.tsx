@@ -44,9 +44,7 @@ export default async function TrazabilidadPage() {
     // Regla: solo serializados (es_serializado = true), solo destino tipo 'Local',
     //        agrupamos en JS por restaurante_id eliminando los sin nombre.
 
-    // Ruta: movimientos_inventario → inventario (es_serializado) + bodegas_destino (tipo=Local)
-    //        + tickets → restaurantes (nombre, sigla)  +  profiles (técnico)
-    // Se usa tickets→restaurantes en lugar de bodegas.local_id porque local_id puede ser null.
+    // Query principal — sin join a profiles (realizado_por no tiene FK nombrada a profiles)
     const { data: movimientos, error } = await supabase
         .from('movimientos_inventario')
         .select(`
@@ -54,8 +52,9 @@ export default async function TrazabilidadPage() {
             fecha_movimiento,
             inventario_id,
             ticket_id,
+            bodega_destino_id,
             realizado_por,
-            inventario!inner (
+            inventario (
                 id,
                 modelo,
                 familia,
@@ -66,30 +65,61 @@ export default async function TrazabilidadPage() {
                 id,
                 tipo
             ),
-            tickets!inner (
+            tickets (
                 numero_ticket,
                 restaurantes (
                     id,
                     nombre_restaurante,
                     sigla
                 )
-            ),
-            profiles:realizado_por (
-                full_name
             )
         `)
-        .eq('inventario.es_serializado', true)
         .order('fecha_movimiento', { ascending: false });
 
-    if (error) {
-        console.error('Error trazabilidad:', error.message);
+    // ── DEBUG ─────────────────────────────────────────────────────────────────
+    console.log('=== TRAZABILIDAD DEBUG ===');
+    console.log('ERROR SUPABASE:', error);
+    console.log('TOTAL MOVIMIENTOS ENCONTRADOS:', movimientos?.length ?? 0);
+    if (movimientos && movimientos.length > 0) {
+        const sample = movimientos[0] as any;
+        console.log('MUESTRA PRIMER MOVIMIENTO:', JSON.stringify({
+            id: sample.id,
+            inventario_id: sample.inventario_id,
+            ticket_id: sample.ticket_id,
+            bodega_destino_id: sample.bodega_destino_id,
+            inventario_es_serializado: sample.inventario?.es_serializado,
+            bodega_tipo: sample.bodega_destino?.tipo,
+            ticket_numero: sample.tickets?.numero_ticket,
+            restaurante: sample.tickets?.restaurantes?.nombre_restaurante ?? null,
+        }, null, 2));
+        // Todos los tipos de bodega destino distintos que existen en la tabla
+        const tiposUnicos = [...new Set((movimientos as any[]).map(m => m.bodega_destino?.tipo ?? 'NULL'))];
+        console.log('TODOS LOS TIPOS DE BODEGA DESTINO EN LA TABLA:', tiposUnicos);
     }
+    console.log('=========================');
 
-    // ── Filtrar: solo movimientos cuyo destino es una bodega tipo Local ──────
+    // ── Filtrar: serializados cuyo destino sea bodega tipo Local ──────────────
     const soloLocales = (movimientos || []).filter((m: any) => {
-        const tipo = m.bodega_destino?.tipo?.toUpperCase();
-        return tipo === 'LOCAL' && m.tickets?.restaurantes;
+        if (m.inventario?.es_serializado !== true) return false;
+        const tipo = m.bodega_destino?.tipo?.toLowerCase();
+        return tipo === 'cliente' && m.tickets?.restaurantes;
     });
+
+    // ── Resolver nombres de técnicos en una sola query separada ──────────────
+    const tecnicoIds: string[] = [...new Set(
+        soloLocales.map((m: any) => m.realizado_por).filter(Boolean) as string[]
+    )];
+
+    let tecnicosMap: Record<string, string> = {};
+    if (tecnicoIds.length > 0) {
+        const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('id', tecnicoIds);
+        (profiles || []).forEach((p: any) => {
+            tecnicosMap[p.id] = p.full_name ?? 'Desconocido';
+        });
+    }
 
     // ── Construir lista tipada ────────────────────────────────────────────────
     const serializados: SerializadoInstalado[] = soloLocales
@@ -105,13 +135,15 @@ export default async function TrazabilidadPage() {
                 fecha_instalacion: m.fecha_movimiento,
                 ticket_id: m.ticket_id,
                 ticket_numero: m.tickets?.numero_ticket ?? 0,
-                tecnico_nombre: m.profiles?.full_name ?? 'Desconocido',
+                tecnico_nombre: tecnicosMap[m.realizado_por] ?? 'Desconocido',
                 restaurante_id: restaurante.id,
-                restaurante_nombre: restaurante.nombre_restaurante,
+                restaurante_nombre: restaurante.nombre_restaurante ?? '—',
                 restaurante_sigla: restaurante.sigla ?? '',
             } satisfies SerializadoInstalado;
         })
         .filter(Boolean) as SerializadoInstalado[];
+
+    console.log('SERIALIZADOS DESPUÉS DE FILTRO:', serializados.length);
 
     return <TrazabilidadClient serializados={serializados} />;
 }

@@ -28,14 +28,19 @@ export function CustomSelect({
     name
 }: CustomSelectProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
+    const buttonRef = useRef<HTMLButtonElement>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     const selectedOption = options.find(opt => opt.value === value);
 
-    // Close on click outside
+    // Cierra al hacer click fuera
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+            if (
+                dropdownRef.current && !dropdownRef.current.contains(event.target as Node) &&
+                buttonRef.current && !buttonRef.current.contains(event.target as Node)
+            ) {
                 setIsOpen(false);
             }
         };
@@ -43,9 +48,51 @@ export function CustomSelect({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // Cierra al hacer scroll o resize
+    useEffect(() => {
+        if (!isOpen) return;
+        const close = () => setIsOpen(false);
+        window.addEventListener('scroll', close, true);
+        window.addEventListener('resize', close);
+        return () => {
+            window.removeEventListener('scroll', close, true);
+            window.removeEventListener('resize', close);
+        };
+    }, [isOpen]);
+
+    const handleOpen = () => {
+        if (disabled) return;
+        if (!isOpen && buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect();
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceAbove = rect.top;
+            const dropdownH = Math.min(options.length * 48 + 8, 240);
+
+            // Abre hacia arriba si no hay espacio abajo
+            if (spaceBelow < dropdownH && spaceAbove > spaceBelow) {
+                setDropdownStyle({
+                    position: 'fixed',
+                    bottom: window.innerHeight - rect.top + 4,
+                    left: rect.left,
+                    width: rect.width,
+                    zIndex: 9999,
+                });
+            } else {
+                setDropdownStyle({
+                    position: 'fixed',
+                    top: rect.bottom + 4,
+                    left: rect.left,
+                    width: rect.width,
+                    zIndex: 9999,
+                });
+            }
+        }
+        setIsOpen(v => !v);
+    };
+
     return (
-        <div className="relative" ref={dropdownRef}>
-            {/* Native hidden select for standard form submission validation */}
+        <div className="relative">
+            {/* Select nativo oculto para validación de formulario */}
             {name && (
                 <select name={name} title={placeholder || 'Select option'} value={value} onChange={() => { }} required={required} className="hidden">
                     <option value="" disabled></option>
@@ -56,10 +103,11 @@ export function CustomSelect({
             )}
 
             <button
+                ref={buttonRef}
                 type="button"
                 id={id}
                 disabled={disabled}
-                onClick={() => !disabled && setIsOpen(!isOpen)}
+                onClick={handleOpen}
                 className={`flex items-center justify-between w-full px-4 py-3 bg-white border border-gray-300 rounded-lg shadow-sm appearance-none transition-all outline-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 focus:rounded-lg ${disabled ? 'opacity-50 cursor-not-allowed bg-slate-50 border-gray-200' : 'cursor-pointer hover:border-gray-400'} ${isOpen ? 'ring-2 ring-blue-500 border-blue-500' : ''}`}
             >
                 <span className={`block truncate text-sm font-bold ${!selectedOption ? 'text-slate-400' : 'text-slate-800'}`}>
@@ -69,7 +117,11 @@ export function CustomSelect({
             </button>
 
             {isOpen && !disabled && (
-                <div className="absolute z-20 w-full mt-2 bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                <div
+                    ref={dropdownRef}
+                    style={dropdownStyle}
+                    className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200"
+                >
                     <ul className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
                         {options.map((option) => {
                             const isSelected = option.value === value;

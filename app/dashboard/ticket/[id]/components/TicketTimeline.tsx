@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { addTicketMessageAction, approveResolutionAction, rejectResolutionAction, scheduleVisitAction, updateChildTicketDescription } from '../actions';
-import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar, AlertTriangle, Pencil, Link2, ClipboardPen, Lock } from 'lucide-react';
+import { User as UserIcon, Paperclip, FileText, Image as ImageIcon, FileSpreadsheet, File, CheckCircle2, XCircle, Star, ChevronDown, MessageSquare, ChevronsRight, Calendar, AlertTriangle, Pencil, Link2, ClipboardPen, Lock, ShieldCheck, Banknote } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { SmartCloseModal } from './SmartCloseModal';
 import { ActaCierrePDF } from './ActaCierrePDF';
@@ -515,7 +515,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                                 </span>
                                                 <span className={`text-[11px] sm:text-xs font-bold transition-colors duration-200 ${isInternalNote ? 'text-indigo-700' : 'text-slate-500'}`}>
                                                     {isInternalNote
-                                                        ? <><span>Nota Interna</span><span className="font-normal text-slate-400 hidden lg:inline ml-1">(solo staff Systel)</span></>
+                                                        ? <><span>Comentario interno</span><span className="font-normal text-slate-400 hidden lg:inline ml-1">(solo staff Systel)</span></>
                                                         : 'Nota Pública (visible para cliente)'
                                                     }
                                                 </span>
@@ -672,6 +672,34 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                 }
 
                                 if (msg.es_sistema) {
+                                    const viaticoMatch = msg.mensaje?.match(/Viático de \$(\d+) asignado\. Comentario: (.*)/);
+                                    if (viaticoMatch) {
+                                        const montoNum = parseInt(viaticoMatch[1], 10);
+                                        const montoFmt = montoNum.toLocaleString('es-CL');
+                                        const comentarioViatico = viaticoMatch[2];
+                                        return (
+                                            <div key={msg.id} className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full px-2 sm:px-0">
+                                                {/* Avatar Systel */}
+                                                <div className="hidden sm:flex shrink-0 h-10 w-10 rounded-full items-center justify-center text-sm font-bold shadow-sm bg-emerald-100 text-emerald-700 ring-2 ring-emerald-200">
+                                                    S
+                                                </div>
+                                                {/* Tarjeta viático */}
+                                                <div className="flex-1 relative shadow-sm bg-emerald-50 border border-emerald-100 border-l-[4px] border-l-emerald-500 rounded-r-xl rounded-tl-xl rounded-bl-none p-4 sm:p-5">
+                                                    <div className="flex justify-between items-start mb-2 pr-2">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <Banknote className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                                            <span className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">Viático Asignado</span>
+                                                        </div>
+                                                        <span className="text-xs text-slate-400 shrink-0">{timeAgo(msg.creado_en)}</span>
+                                                    </div>
+                                                    <p className="text-base font-black text-emerald-800">${montoFmt}</p>
+                                                    {comentarioViatico && (
+                                                        <p className="text-xs text-slate-500 mt-1 italic">"{comentarioViatico}"</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
                                     return (
                                         <div key={msg.id} className="flex justify-center my-4 w-full">
                                             <div className="bg-slate-100 text-slate-500 px-4 py-1.5 rounded-full text-xs font-medium italic border border-slate-200">
@@ -683,30 +711,50 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
 
                                 commentCounter++;
                                 return (
-                                    <div key={msg.id} className="flex flex-col sm:flex-row gap-2 sm:gap-4 w-full px-2 sm:px-0">
-                                        <div className={`hidden sm:flex shrink-0 h-10 w-10 rounded-full items-center justify-center text-sm font-bold shadow-sm ${isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
+                                    <div key={msg.id} className={`flex flex-col sm:flex-row gap-2 sm:gap-4 w-full px-2 sm:px-0 ${msg.es_interno ? 'my-1' : ''}`}>
+                                        {/* Avatar — limpio, sin overlays */}
+                                        <div className={`hidden sm:flex shrink-0 h-10 w-10 rounded-full items-center justify-center text-sm font-bold shadow-sm ${msg.es_interno ? 'bg-amber-100 text-amber-700 ring-2 ring-amber-200' : isAgentMsg ? 'bg-orange-100 text-orange-700 ring-2 ring-white' : 'bg-indigo-100 text-indigo-700 ring-2 ring-white'}`}>
                                             {msg.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
                                         </div>
-                                        <div className={`flex-1 border rounded-xl p-4 sm:p-5 shadow-sm relative ${msg.es_interno ? 'bg-amber-50 border-yellow-300' : 'bg-white border-gray-200'}`}>
-                                            {msg.es_interno && (
-                                                <div className="absolute -top-3 left-4 bg-orange-500 text-white text-[9px] font-black px-2 py-0.5 rounded shadow-sm uppercase tracking-widest flex items-center gap-1  border border-orange-600">
-                                                    🔒 INTERNO
-                                                </div>
-                                            )}
-                                            <div className={`absolute top-4 right-4 text-xs font-bold px-2 py-1 rounded-md ${msg.es_interno ? 'bg-yellow-200/50 text-yellow-700' : 'text-slate-400 bg-slate-100'}`}>#{commentCounter}</div>
-                                            <div className="flex justify-between items-center mb-3 pr-12">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-bold text-gray-900 text-sm">{msg.profiles?.full_name || 'Usuario desconocido'}</span>
-                                                    {isAgentMsg && <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] uppercase font-bold tracking-wider">Agente</span>}
-                                                    {isMe && !isAgentMsg && <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] uppercase font-bold tracking-wider">Tú</span>}
-                                                </div>
-                                                <span className="text-xs text-gray-400 font-medium">{timeAgo(msg.creado_en)}</span>
+
+                                        {/* Tarjeta */}
+                                        <div className={`flex-1 relative shadow-sm ${
+                                            msg.es_interno
+                                                ? 'bg-amber-50 border border-amber-100 border-l-[4px] border-l-amber-500 rounded-r-xl rounded-tl-xl rounded-bl-none p-4 sm:p-5'
+                                                : 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5'
+                                        }`}>
+
+                                            {/* Contador */}
+                                            <div className={`absolute top-4 right-4 text-xs font-bold px-2 py-1 rounded-md ${msg.es_interno ? 'bg-amber-100 text-amber-700' : 'text-slate-400 bg-slate-100'}`}>
+                                                #{commentCounter}
                                             </div>
-                                            <div className="prose prose-sm max-w-none text-slate-700 max-h-[350px] overflow-y-auto pb-2 custom-scrollbar" dangerouslySetInnerHTML={{ __html: msg.mensaje }} />
+
+                                            {/* Header */}
+                                            <div className="flex justify-between items-start mb-3 pr-12">
+                                                <div className="flex flex-col gap-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-semibold text-gray-800 text-sm">{msg.profiles?.full_name || 'Usuario desconocido'}</span>
+                                                        {isAgentMsg && !msg.es_interno && <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] uppercase font-bold tracking-wider">Agente</span>}
+                                                        {isMe && !isAgentMsg && !msg.es_interno && <span className="px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[10px] uppercase font-bold tracking-wider">Tú</span>}
+                                                    </div>
+                                                    {/* Badge de seguridad — solo en notas internas */}
+                                                    {msg.es_interno && (
+                                                        <div className="flex items-center gap-1.5">
+                                                            <ShieldCheck className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                                            <span className="text-[10px] font-semibold text-amber-700 tracking-wide uppercase">Comentario Interno - Systel</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <span className="text-xs text-slate-400 font-medium shrink-0">{timeAgo(msg.creado_en)}</span>
+                                            </div>
+
+                                            {/* Contenido */}
+                                            <div className="prose prose-sm max-w-none text-slate-800 max-h-[350px] overflow-y-auto pb-2 custom-scrollbar" dangerouslySetInnerHTML={{ __html: msg.mensaje }} />
+
+                                            {/* Adjuntos */}
                                             {msg.adjuntos && msg.adjuntos.length > 0 && (
-                                                <div className="mt-4 pt-4 border-t border-gray-50 flex flex-wrap gap-3">
+                                                <div className={`mt-4 pt-4 flex flex-wrap gap-3 ${msg.es_interno ? 'border-t border-indigo-100' : 'border-t border-gray-50'}`}>
                                                     {msg.adjuntos.map((url: string, idx: number) => {
-                                                        // REGLA MÁGICA PARA COMENTARIOS: Si es foto o se llama blob, móstralo como imagen
                                                         const urlLower = url.toLowerCase();
                                                         const ext = urlLower.split('.').pop() || '';
                                                         const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext) || urlLower.includes('blob');

@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { updateTicketPropertiesAction, assignTicketToMeAction, updateChildTicketDescription } from '../actions';
 import Link from 'next/link';
-import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers, Pencil } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle2, XCircle, ChevronDown, ChevronRight, Activity, Flag, UserPlus, Calendar, Plus, Layers, Pencil, Banknote } from 'lucide-react';
 import { TicketStatus } from '@/types/database.types';
 import { AssignMaterialModal } from './AssignMaterialModal';
 import { AddChildTicketModal } from './AddChildTicketModal';
 import { CloseTicketModal } from './CloseTicketModal';
+import { AsignarViaticoModal } from './AsignarViaticoModal';
 import { closeTicketWithActaAction } from '../actions';
 
 interface Props {
@@ -27,8 +28,10 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'us
     const [showMaterialModal, setShowMaterialModal] = useState(false);
     const [showChildTicketModal, setShowChildTicketModal] = useState(false);
     const [showCloseModal, setShowCloseModal] = useState(false);
+    const [showViaticoModal, setShowViaticoModal] = useState(false);
     const [childrenOpen, setChildrenOpen] = useState(false);
     const [packingOpen, setPackingOpen] = useState(false);
+    const [viaticoOpen, setViaticoOpen] = useState(false);
     const [editingChildId, setEditingChildId] = useState<string | null>(null);
     const [editingDescription, setEditingDescription] = useState('');
     const [isSavingDesc, setIsSavingDesc] = useState(false);
@@ -191,12 +194,21 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'us
                             </div>
                         )}
 
-                        {(isAgent || isAdmin) && !isTerminal && (
-                            <button 
+                        {isAgent && !isTerminal && (
+                            <button
                                 onClick={() => setShowMaterialModal(true)}
                                 className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white border border-slate-300 text-slate-700 text-xs font-black tracking-widest hover:bg-slate-50 transition-colors shadow-sm"
                             >
                                 + ASIGNAR MATERIAL
+                            </button>
+                        )}
+
+                        {isAdmin && (
+                            <button
+                                onClick={() => setShowViaticoModal(true)}
+                                className="w-full mt-2 flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-white border border-emerald-300 text-emerald-700 text-xs font-black tracking-widest hover:bg-emerald-50 transition-colors shadow-sm"
+                            >
+                                $ ASIGNAR VIÁTICO
                             </button>
                         )}
                     </div>
@@ -377,6 +389,62 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'us
                     </div>
                 )}
 
+                {/* VIÁTICOS ASIGNADOS — solo admin/coordinador */}
+                {(() => {
+                    if (!isAdmin) return null;
+                    const viaticos = (ticket.ticket_messages || []).filter((m: any) =>
+                        m.es_sistema && /Viático de \$\d+ asignado/.test(m.mensaje || '')
+                    );
+                    if (viaticos.length === 0) return null;
+                    const total = viaticos.reduce((acc: number, m: any) => {
+                        const match = m.mensaje?.match(/Viático de \$(\d+) asignado/);
+                        return acc + (match ? parseInt(match[1], 10) : 0);
+                    }, 0);
+                    const totalFmt = total.toLocaleString('es-CL');
+                    return (
+                        <div className="border-b border-gray-50">
+                            <button
+                                onClick={() => setViaticoOpen(o => !o)}
+                                className="w-full flex items-center justify-between p-5 hover:bg-emerald-50/30 transition-colors group"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Viáticos Asignados</span>
+                                    <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-full">
+                                        {viaticos.length}
+                                    </span>
+                                </div>
+                                <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${viaticoOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            <div className={`grid transition-all duration-300 ease-in-out ${viaticoOpen ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                                <div className="overflow-hidden">
+                                    <div className="px-5 pb-5 space-y-3">
+                                        {/* Total acumulado */}
+                                        <div className="flex items-center justify-between p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                                            <span className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Total acumulado</span>
+                                            <span className="text-base font-black text-emerald-800">${totalFmt}</span>
+                                        </div>
+                                        {/* Detalle por registro */}
+                                        {viaticos.map((m: any) => {
+                                            const match = m.mensaje?.match(/Viático de \$(\d+) asignado\. Comentario: (.*)/);
+                                            if (!match) return null;
+                                            const monto = parseInt(match[1], 10).toLocaleString('es-CL');
+                                            const comentario = match[2];
+                                            return (
+                                                <div key={m.id} className="flex justify-between items-start gap-2 p-2.5 bg-white border border-emerald-100 rounded-xl">
+                                                    <p className="text-[11px] text-slate-500 italic truncate flex-1">"{comentario}"</p>
+                                                    <span className="text-sm font-black text-emerald-700 shrink-0">${monto}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* RESTAURANT INFO SECTION (LIMPIA Y RESTAURADA) */}
                 {ticket.restaurantes && (
                     <div className="p-5 bg-gray-50/30 rounded-b-2xl">
@@ -519,9 +587,17 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'us
             )}
 
             {showChildTicketModal && isAgent && (
-                <AddChildTicketModal 
+                <AddChildTicketModal
                     ticketPadreId={ticket.id}
                     onClose={() => setShowChildTicketModal(false)}
+                />
+            )}
+
+            {isAdmin && (
+                <AsignarViaticoModal
+                    isOpen={showViaticoModal}
+                    onClose={() => setShowViaticoModal(false)}
+                    ticket={ticket}
                 />
             )}
 

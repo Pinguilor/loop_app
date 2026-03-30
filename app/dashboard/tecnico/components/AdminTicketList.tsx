@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Ticket } from '@/types/database.types';
 import { FileText, Image as ImageIcon, FileSpreadsheet, File, MessageSquare, Search, ChevronLeft, ChevronRight, User, CornerDownRight, Building2 } from 'lucide-react';
 import Link from 'next/link';
+import { ExportarMaestroButton } from '@/app/dashboard/admin/components/ExportarMaestroButton';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -108,6 +109,8 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                             </span>
                         </h3>
                     </div>
+
+                    <ExportarMaestroButton />
 
                     {/* Barra de Búsqueda de Ancho Completo */}
                     <div className="relative w-full lg:max-w-md">

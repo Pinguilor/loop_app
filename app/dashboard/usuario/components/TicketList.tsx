@@ -321,9 +321,15 @@ export default function TicketList({ limit }: { limit?: number }) {
                                         </div>
                                     </td>
 
-                                    <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-1 mb-1">
-                                            {ticket.titulo}
+                                    <td className="px-6 py-4 max-w-0 w-[30%]">
+                                        <div className="relative group/titulo mb-1">
+                                            <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors truncate">
+                                                {ticket.titulo}
+                                            </div>
+                                            <span className="absolute bottom-full left-0 mb-2 hidden group-hover/titulo:block bg-slate-800 text-white text-xs font-semibold rounded-lg py-1.5 px-2.5 whitespace-nowrap z-50 pointer-events-none shadow-xl">
+                                                {ticket.titulo}
+                                                <span className="absolute top-full left-4 border-4 border-transparent border-t-slate-800" />
+                                            </span>
                                         </div>
                                         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
                                             {ticket.catalogo_servicios && (

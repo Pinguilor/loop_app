@@ -89,6 +89,9 @@ export function TicketForm({ onClose }: Props) {
     const [showDropdown, setShowDropdown] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    // Tenant isolation: cliente_id del usuario logueado
+    const [clienteId, setClienteId] = useState<string | null>(null);
+
     // Relational Catalog & Zone State (4 Niveles)
     const [tiposServicio, setTiposServicio] = useState<any[]>([]);
     const [categorias, setCategorias] = useState<any[]>([]);
@@ -106,13 +109,23 @@ export function TicketForm({ onClose }: Props) {
     // Priority state
     const [prioridad, setPrioridad] = useState<string>('media');
 
-    // Fetch master data on mount
+    // Fetch master data on mount (incluye cliente_id para aislamiento multi-tenant)
     useEffect(() => {
         async function fetchMasterData() {
             setIsLoadingCatalog(true);
             const supabase = createClient();
 
             try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                    const { data: profile } = await supabase
+                        .from('profiles')
+                        .select('cliente_id')
+                        .eq('id', user.id)
+                        .maybeSingle();
+                    setClienteId((profile as any)?.cliente_id ?? null);
+                }
+
                 const [ts, zs] = await Promise.all([
                     supabase.from('ticket_tipos_servicio').select('id, nombre').eq('activo', true).order('nombre'),
                     supabase.from('zonas').select('*').eq('activo', true)
@@ -207,11 +220,16 @@ export function TicketForm({ onClose }: Props) {
 
             setIsSearching(true);
             const supabase = createClient();
-            const { data, error } = await supabase
+            let query = supabase
                 .from('restaurantes')
                 .select('*')
-                .or(`sigla.ilike.%${searchQuery}%,nombre_restaurante.ilike.%${searchQuery}%`)
-                .limit(5);
+                .or(`sigla.ilike.%${searchQuery}%,nombre_restaurante.ilike.%${searchQuery}%`);
+
+            if (clienteId) {
+                query = query.eq('cliente_id', clienteId);
+            }
+
+            const { data, error } = await query.limit(5);
 
             if (!error && data) {
                 setRestaurants(data);
@@ -228,7 +246,7 @@ export function TicketForm({ onClose }: Props) {
         }, 300);
 
         return () => clearTimeout(timeoutId);
-    }, [searchQuery, selectedRestaurant]);
+    }, [searchQuery, selectedRestaurant, clienteId]);
 
     // Handle outside click to close dropdown
     useEffect(() => {

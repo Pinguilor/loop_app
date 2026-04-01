@@ -53,8 +53,8 @@ export default async function ClientHubPage({ params }: Props) {
         { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // ── Fetch paralelo: usuarios del cliente + tipos de servicio ──
-    const [authResult, profilesResult, tiposResult] = await Promise.all([
+    // ── Fetch paralelo: usuarios + tipos de servicio + restaurantes ──
+    const [authResult, profilesResult, tiposResult, restaurantesResult] = await Promise.all([
         adminSupabase.auth.admin.listUsers({ perPage: 1000 }),
         adminSupabase
             .from('profiles')
@@ -65,6 +65,11 @@ export default async function ClientHubPage({ params }: Props) {
             .select('id, nombre, activo')
             .eq('cliente_id', id)
             .order('nombre'),
+        supabase
+            .from('restaurantes')
+            .select('id, nombre_restaurante, sigla, ip, correo, direccion')
+            .eq('cliente_id', id)
+            .order('nombre_restaurante'),
     ]);
 
     // Construir mapa auth → email
@@ -91,11 +96,21 @@ export default async function ClientHubPage({ params }: Props) {
         activo: t.activo as boolean,
     }));
 
+    const restaurantes = (restaurantesResult.data ?? []).map(r => ({
+        id:                 r.id as string,
+        nombre_restaurante: r.nombre_restaurante as string,
+        sigla:              r.sigla as string,
+        ip:                 (r.ip as string | null) ?? null,
+        correo:             (r.correo as string | null) ?? null,
+        direccion:          (r.direccion as string | null) ?? null,
+    }));
+
     return (
         <ClientHubClient
             cliente={cliente}
             usuariosCliente={usuariosCliente}
             tiposServicio={tiposServicio}
+            restaurantes={restaurantes}
         />
     );
 }

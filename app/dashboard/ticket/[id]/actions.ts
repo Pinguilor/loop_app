@@ -38,6 +38,30 @@ export async function addTicketMessageAction(formData: FormData) {
         return { error: 'Puedes subir un máximo de 5 adjuntos por mensaje.' };
     }
 
+    // --- AUTHORIZATION CHECK ---
+    // Fetch user profile and ticket creator's profile in parallel
+    const [{ data: senderProfile }, { data: ticket }] = await Promise.all([
+        supabase.from('profiles').select('rol, cliente_id').eq('id', user.id).maybeSingle(),
+        supabase.from('tickets')
+            .select('creado_por, numero_ticket, profiles:creado_por(cliente_id)')
+            .eq('id', ticketId)
+            .maybeSingle(),
+    ]);
+
+    if (!ticket) return { error: 'Ticket no encontrado.' };
+
+    const userRol = (senderProfile?.rol ?? '').toLowerCase();
+    const isStaff = ['admin', 'tecnico', 'coordinador', 'admin_bodega'].includes(userRol);
+    const isCreator = ticket.creado_por === user.id;
+    const senderClienteId = (senderProfile as any)?.cliente_id ?? null;
+    const ticketClienteId = (ticket.profiles as any)?.cliente_id ?? null;
+    const mismaEmpresa = senderClienteId !== null && ticketClienteId !== null && senderClienteId === ticketClienteId;
+
+    if (!isStaff && !isCreator && !mismaEmpresa) {
+        return { error: 'No tienes permiso para comentar en este ticket.' };
+    }
+    // ---------------------------
+
     const fileUrls: string[] = [];
 
     // Process and upload files
@@ -89,7 +113,7 @@ export async function addTicketMessageAction(formData: FormData) {
             .from('tickets')
             .update({ estado: 'resuelto', fecha_resolucion: new Date().toISOString() })
             .eq('id', ticketId)
-            .select() // Ensures execution completion
+            .select()
             .single();
 
         if (updateError) {
@@ -99,21 +123,16 @@ export async function addTicketMessageAction(formData: FormData) {
     }
 
     // --- NOTIFICATION LOGIC ---
-    // Fetch the ticket to see who created it
-    const { data: ticket } = await supabase
-        .from('tickets')
-        .select('creado_por, numero_ticket')
-        .eq('id', ticketId)
-        .single();
+    if (ticket.creado_por !== user.id) {
+        const mensajeNotif = isStaff
+            ? `El agente ha respondido a tu solicitud NC-${ticket.numero_ticket}`
+            : `Un compañero de tu empresa ha comentado en la solicitud NC-${ticket.numero_ticket}`;
 
-    if (ticket && ticket.creado_por !== user.id) {
-        // If the sender is not the creator, they are an agent answering the requester.
-        // Insert a notification for the requester.
         await supabase.from('notifications').insert({
             user_id: ticket.creado_por,
             ticket_id: ticketId,
-            mensaje: `El agente ha respondido a tu solicitud NC-${ticket.numero_ticket}`,
-            leida: false
+            mensaje: mensajeNotif,
+            leida: false,
         });
     }
     // -------------------------
@@ -405,7 +424,21 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
 
     if (invError || !originalItem) return { error: 'Item de inventario no encontrado.' };
 
-    if (originalItem.cantidad < cantidad) return { error: 'Cantidad superior al stock disponible.' };
+    // ── Doble-check: descontar stock bloqueado por devoluciones pendientes ──
+    const { data: devolsPendientes } = await supabase
+        .from('solicitudes_devoluciones')
+        .select('cantidad')
+        .eq('inventario_id', inventarioId)
+        .eq('estado', 'pendiente');
+
+    const cantidadBloqueada = (devolsPendientes || []).reduce((acc: number, d: any) => acc + (d.cantidad ?? 0), 0);
+    const stockDisponible = originalItem.cantidad - cantidadBloqueada;
+
+    if (stockDisponible < cantidad) {
+        return {
+            error: `Stock insuficiente. Disponible: ${stockDisponible}${cantidadBloqueada > 0 ? ` (${cantidadBloqueada} bloqueado por devolución pendiente)` : ''}.`,
+        };
+    }
 
     let newInventarioId = originalItem.id;
 
@@ -476,6 +509,125 @@ export async function assignMaterialAction(ticketId: string, inventarioId: strin
         mensaje: msgHtml,
         es_sistema: false,
         es_interno: true
+    });
+
+    revalidatePath(`/dashboard/ticket/${ticketId}`);
+    return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Consumo de Mochila en lote (carrito de compras)
+// Procesa múltiples ítems en una sola llamada y genera un único mensaje en el ticket.
+// ─────────────────────────────────────────────────────────────────────────────
+export async function assignMaterialsBatchAction(
+    ticketId: string,
+    items: { inventarioId: string; cantidad: number }[]
+) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: 'No autorizado.' };
+
+    const { data: profile } = await supabase
+        .from('profiles').select('rol').eq('id', user.id).maybeSingle();
+    const isAllowed = ['ADMIN', 'COORDINADOR', 'TECNICO'].includes(profile?.rol?.toUpperCase() || '');
+    if (!isAllowed) return { error: 'No tienes permisos para asignar materiales.' };
+    if (!items || items.length === 0) return { error: 'No hay ítems seleccionados.' };
+
+    type Procesado = { modelo: string; familia: string; cantidad: number; es_serializado: boolean; numero_serie: string | null };
+    const procesados: Procesado[] = [];
+
+    for (const { inventarioId, cantidad } of items) {
+        const { data: originalItem, error: invError } = await supabase
+            .from('inventario').select('*').eq('id', inventarioId).single();
+        if (invError || !originalItem) return { error: `Ítem ${inventarioId} no encontrado.` };
+
+        // Validación con stock bloqueado
+        const { data: devolsPendientes } = await supabase
+            .from('solicitudes_devoluciones').select('cantidad')
+            .eq('inventario_id', inventarioId).eq('estado', 'pendiente');
+        const cantidadBloqueada = (devolsPendientes || []).reduce((acc: number, d: any) => acc + (d.cantidad ?? 0), 0);
+        const stockDisponible = originalItem.cantidad - cantidadBloqueada;
+        if (stockDisponible < cantidad) {
+            return { error: `Stock insuficiente para "${originalItem.modelo}". Disponible: ${stockDisponible}${cantidadBloqueada > 0 ? ` (${cantidadBloqueada} en devolución pendiente)` : ''}.` };
+        }
+
+        let newInventarioId = originalItem.id;
+
+        if (originalItem.es_serializado || originalItem.cantidad === cantidad) {
+            const { error: moveError } = await supabase.from('inventario')
+                .update({ estado: 'En Tránsito', ticket_id: ticketId })
+                .eq('id', originalItem.id).select().single();
+            if (moveError) return { error: `Error moviendo "${originalItem.modelo}": ${moveError.message}` };
+        } else {
+            const { error: updateError } = await supabase.from('inventario')
+                .update({ cantidad: originalItem.cantidad - cantidad }).eq('id', originalItem.id);
+            if (updateError) return { error: `Error descontando "${originalItem.modelo}": ${updateError.message}` };
+
+            const cloneData: any = {
+                bodega_id:     originalItem.bodega_id,
+                modelo:        originalItem.modelo,
+                familia:       originalItem.familia,
+                es_serializado: false,
+                numero_serie:  null,
+                estado:        'En Tránsito',
+                cantidad,
+                ticket_id:     ticketId,
+            };
+            if (originalItem.tipo !== undefined)      cloneData.tipo = originalItem.tipo;
+            if (originalItem.descripcion !== undefined) cloneData.descripcion = originalItem.descripcion;
+
+            const { data: newItem, error: insertError } = await supabase
+                .from('inventario').insert(cloneData).select().single();
+            if (insertError || !newItem) return { error: `Error creando lote asignado: ${insertError?.message}` };
+            newInventarioId = (newItem as any).id;
+        }
+
+        await supabase.from('movimientos_inventario').insert({
+            inventario_id:    newInventarioId,
+            ticket_id:        ticketId,
+            bodega_origen_id: originalItem.bodega_id,
+            bodega_destino_id: originalItem.bodega_id,
+            cantidad,
+            fecha_movimiento: new Date().toISOString(),
+            realizado_por:    user.id,
+        });
+
+        procesados.push({
+            modelo:        originalItem.modelo,
+            familia:       originalItem.familia,
+            cantidad,
+            es_serializado: originalItem.es_serializado,
+            numero_serie:  originalItem.numero_serie ?? null,
+        });
+    }
+
+    // Mensaje único para todos los ítems procesados
+    const lineas = procesados.map(p => {
+        const label = p.es_serializado && p.numero_serie
+            ? `${p.modelo} <span style="font-size:10px;color:#4f46e5;background:#eef2ff;padding:1px 6px;border-radius:4px;font-family:monospace;">SN: ${p.numero_serie}</span>`
+            : `${p.cantidad}x ${p.modelo}`;
+        return `<li style="margin:4px 0;font-size:12px;color:#334155;"><b>${label}</b><span style="margin-left:6px;font-size:10px;color:#94a3b8;text-transform:uppercase;">${p.familia}</span></li>`;
+    }).join('');
+
+    const msgHtml = `<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:16px;max-width:480px;">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <span style="font-size:20px;">📦</span>
+    <div>
+      <span style="font-size:10px;font-weight:900;text-transform:uppercase;color:#4f46e5;">Equipos Reservados</span>
+      <p style="margin:2px 0 0;font-size:13px;font-weight:700;color:#1e1b4b;">${procesados.length} ítem${procesados.length !== 1 ? 's' : ''} asignado${procesados.length !== 1 ? 's' : ''} al ticket</p>
+    </div>
+  </div>
+  <ul style="margin:0;padding-left:18px;border-top:1px solid #c7d2fe;padding-top:8px;">
+    ${lineas}
+  </ul>
+</div>`;
+
+    await supabase.from('ticket_messages').insert({
+        ticket_id:  ticketId,
+        sender_id:  user.id,
+        mensaje:    msgHtml,
+        es_sistema: false,
+        es_interno: true,
     });
 
     revalidatePath(`/dashboard/ticket/${ticketId}`);

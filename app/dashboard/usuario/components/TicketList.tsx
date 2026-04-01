@@ -5,29 +5,30 @@ import { Ticket } from '@/types/database.types';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { MessageSquare, Search, ChevronLeft, ChevronRight, CornerDownRight } from 'lucide-react';
+import { MessageSquare, Search, ChevronLeft, ChevronRight, CornerDownRight, Users, User } from 'lucide-react';
 import { LoopLoader } from '@/components/LoopLoader';
 
 const ITEMS_PER_PAGE = 25;
 
 type FilterType = 'TODOS' | 'PENDIENTES' | 'RESUELTOS';
+type ScopeType = 'propios' | 'equipo';
 
 export default function TicketList({ limit }: { limit?: number }) {
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [filter, setFilter] = useState<FilterType>('TODOS');
+    const [scope, setScope] = useState<ScopeType>('propios');
     const [currentPage, setCurrentPage] = useState(1);
     const [isMounted, setIsMounted] = useState(false);
     const router = useRouter();
 
-    // Reset pagination when search term or filter changes
     useEffect(() => {
         setIsMounted(true);
         setCurrentPage(1);
-    }, [searchTerm, filter]);
+    }, [searchTerm, filter, scope]);
 
-    const fetchTickets = async () => {
+    const fetchTickets = async (currentScope: ScopeType) => {
         const supabase = createClient();
 
         try {
@@ -37,21 +38,81 @@ export default function TicketList({ limit }: { limit?: number }) {
                 return;
             }
 
-            const { data, error } = await supabase
-                .from('tickets')
-                .select(`
-                    *, 
-                    restaurantes(nombre_restaurante, sigla), 
-                    catalogo_servicios(categoria, subcategoria, elemento),
-                    padre:ticket_padre_id(numero_ticket)
-                `)
-                .eq('creado_por', user.id)
-                .order('fecha_creacion', { ascending: false });
+            if (currentScope === 'propios') {
+                const { data, error } = await supabase
+                    .from('tickets')
+                    .select(`
+                        *,
+                        restaurantes(nombre_restaurante, sigla),
+                        catalogo_servicios(categoria, subcategoria, elemento),
+                        padre:ticket_padre_id(numero_ticket)
+                    `)
+                    .eq('creado_por', user.id)
+                    .order('fecha_creacion', { ascending: false });
 
-            if (error) {
-                console.error('Error al cargar tickets:', error);
+                if (error) {
+                    console.error('Error al cargar tickets:', error);
+                } else {
+                    setTickets(data || []);
+                }
             } else {
-                setTickets(data || []);
+                // scope === 'equipo': buscar todos los usuarios del mismo cliente
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('cliente_id')
+                    .eq('id', user.id)
+                    .maybeSingle();
+
+                const clienteId = (profile as any)?.cliente_id ?? null;
+
+                if (!clienteId) {
+                    // Sin empresa asignada, mostrar solo los propios
+                    const { data, error } = await supabase
+                        .from('tickets')
+                        .select(`
+                            *,
+                            restaurantes(nombre_restaurante, sigla),
+                            catalogo_servicios(categoria, subcategoria, elemento),
+                            padre:ticket_padre_id(numero_ticket),
+                            profiles:creado_por(full_name)
+                        `)
+                        .eq('creado_por', user.id)
+                        .order('fecha_creacion', { ascending: false });
+
+                    if (!error) setTickets(data || []);
+                    return;
+                }
+
+                // Obtener todos los usuarios del mismo cliente
+                const { data: companyProfiles } = await supabase
+                    .from('profiles')
+                    .select('id')
+                    .eq('cliente_id', clienteId);
+
+                const userIds = (companyProfiles || []).map((p: any) => p.id);
+
+                if (userIds.length === 0) {
+                    setTickets([]);
+                    return;
+                }
+
+                const { data, error } = await supabase
+                    .from('tickets')
+                    .select(`
+                        *,
+                        restaurantes(nombre_restaurante, sigla),
+                        catalogo_servicios(categoria, subcategoria, elemento),
+                        padre:ticket_padre_id(numero_ticket),
+                        profiles:creado_por(full_name)
+                    `)
+                    .in('creado_por', userIds)
+                    .order('fecha_creacion', { ascending: false });
+
+                if (error) {
+                    console.error('Error al cargar tickets del equipo:', error);
+                } else {
+                    setTickets(data || []);
+                }
             }
         } finally {
             setLoading(false);
@@ -59,24 +120,23 @@ export default function TicketList({ limit }: { limit?: number }) {
     };
 
     useEffect(() => {
-        fetchTickets();
+        setLoading(true);
+        fetchTickets(scope);
 
         const supabase = createClient();
         const channel = supabase
-            .channel('custom-all-channel-user-list')
+            .channel(`custom-all-channel-user-list-${scope}`)
             .on(
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'tickets' },
-                () => {
-                    fetchTickets();
-                }
+                () => { fetchTickets(scope); }
             )
             .subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, []);
+    }, [scope]);
 
     const getStatusBadge = (status: Ticket['estado']) => {
         switch (status) {
@@ -103,7 +163,6 @@ export default function TicketList({ limit }: { limit?: number }) {
     };
 
     const processedTickets = useMemo(() => {
-        // 1. Filter by Status Tab
         let filtered = tickets.filter(ticket => {
             if (filter === 'TODOS') return true;
             if (filter === 'PENDIENTES') return !['anulado', 'resuelto', 'cerrado'].includes(ticket.estado);
@@ -111,7 +170,6 @@ export default function TicketList({ limit }: { limit?: number }) {
             return true;
         });
 
-        // 2. Filter by Search Term
         if (searchTerm.trim()) {
             const lowerSearch = searchTerm.toLowerCase();
             filtered = filtered.filter(ticket => {
@@ -119,7 +177,9 @@ export default function TicketList({ limit }: { limit?: number }) {
                 const matchTitle = (ticket.titulo || '').toLowerCase().includes(lowerSearch);
                 const matchDesc = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
                 const matchRestaurante = (ticket.restaurantes?.nombre_restaurante || '').toLowerCase().includes(lowerSearch);
-                return matchId || matchTitle || matchDesc || matchRestaurante;
+                const matchSigla = (ticket.restaurantes?.sigla || '').toLowerCase().includes(lowerSearch);
+                const matchCreador = ((ticket.profiles as any)?.full_name || '').toLowerCase().includes(lowerSearch);
+                return matchId || matchTitle || matchDesc || matchRestaurante || matchSigla || matchCreador;
             });
         }
 
@@ -128,10 +188,7 @@ export default function TicketList({ limit }: { limit?: number }) {
 
     const totalPages = Math.ceil(processedTickets.length / ITEMS_PER_PAGE);
 
-    // Instead of completely slicing limit (which was for the mini-widget version), now we prioritize full Pagination view.
     const paginatedTickets = useMemo(() => {
-        // If "limit" is passed, it means it's a very constrained widget. 
-        // But the user requested generic paginated view with 40 globally.
         const effectiveList = limit && !searchTerm ? processedTickets.slice(0, limit) : processedTickets;
         const start = (currentPage - 1) * ITEMS_PER_PAGE;
         return effectiveList.slice(start, start + ITEMS_PER_PAGE);
@@ -145,27 +202,53 @@ export default function TicketList({ limit }: { limit?: number }) {
 
     return (
         <div className="bg-white shadow-md rounded-xl overflow-hidden border border-slate-200 w-full mt-2">
-            {/* Header / Controles Principales (Visible Móvil y Desktop) */}
+            {/* Header / Controles Principales */}
             <div className="p-4 sm:p-5 border-b border-gray-200 flex flex-col bg-white gap-4 w-full">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 w-full">
-                    {/* Título y Badge */}
-                    <div className="flex items-center gap-2">
+                    {/* Título + Segmented Control */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <h3 className="text-xl font-black text-slate-800 flex items-center gap-2 whitespace-nowrap tracking-tight">
-                            Mis Tickets
+                            {scope === 'propios' ? 'Mis Tickets' : 'Tickets del Equipo'}
                             <span className="bg-brand-primary/10 text-brand-primary text-xs font-bold px-2.5 py-1 rounded-full border border-brand-primary/20">
                                 {processedTickets.length}
                             </span>
                         </h3>
+
+                        {/* Segmented Control */}
+                        <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 shadow-inner w-fit">
+                            <button
+                                onClick={() => setScope('propios')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    scope === 'propios'
+                                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/60'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <User className="w-3 h-3" />
+                                Mis Tickets
+                            </button>
+                            <button
+                                onClick={() => setScope('equipo')}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                    scope === 'equipo'
+                                        ? 'bg-white text-slate-800 shadow-sm ring-1 ring-slate-200/60'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                            >
+                                <Users className="w-3 h-3" />
+                                Mi Equipo
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Barra de Búsqueda de Ancho Completo */}
+                    {/* Barra de Búsqueda */}
                     <div className="relative w-full lg:max-w-md">
                         <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                             <Search className="h-4 w-4 text-slate-400" />
                         </div>
                         <input
                             type="text"
-                            placeholder="Buscar por ID (NC-XX), título o descripción"
+                            placeholder={scope === 'equipo' ? 'Buscar por ID, título, descripción, restaurante o creador…' : 'Buscar por ID (NC-XX), título, descripción o restaurante…'}
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2.5 sm:py-2 border border-slate-300 rounded-xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary text-[15px] sm:text-sm transition-all shadow-sm"
@@ -173,7 +256,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                     </div>
                 </div>
 
-                {/* Filtros Estrictos (Tabs) */}
+                {/* Filtros de Estado (Tabs) */}
                 <div className="flex overflow-x-auto w-full p-1 sm:p-1.5 rounded-xl bg-slate-100 border border-slate-200 shadow-inner mt-1 sm:mt-0">
                     <div className="flex space-x-1 min-w-max w-full">
                         <button onClick={() => setFilter('TODOS')} className={`flex-1 px-4 sm:px-6 py-2 rounded-lg text-sm font-bold transition-all ${filter === 'TODOS' ? 'bg-white text-brand-primary shadow-sm ring-1 ring-slate-200/50' : 'text-slate-500 hover:text-slate-800 hover:bg-slate-200/50'}`}>Todos</button>
@@ -183,22 +266,25 @@ export default function TicketList({ limit }: { limit?: number }) {
                 </div>
             </div>
 
-            {/* VISTA DE ESCRITORIO (Tabla clásica) */}
+            {/* VISTA DE ESCRITORIO (Tabla) */}
             <div className="hidden md:block overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50/50">
                         <tr>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[15%]">ID / Fecha</th>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[40%]">Asunto</th>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[15%]">Restaurante</th>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[15%]">Prioridad</th>
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[30%]">Asunto</th>
+                            {scope === 'equipo' && (
+                                <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[15%]">Usuario</th>
+                            )}
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[12%]">Restaurante</th>
+                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider w-[13%]">Prioridad</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Estado</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
                         {paginatedTickets.length === 0 ? (
                             <tr>
-                                <td colSpan={4} className="px-6 py-12 text-center text-gray-500">
+                                <td colSpan={scope === 'equipo' ? 6 : 5} className="px-6 py-12 text-center text-gray-500">
                                     <div className="flex flex-col items-center justify-center">
                                         <MessageSquare className="w-12 h-12 text-gray-300 mb-3" />
                                         <p className="text-gray-500">No hay tickets en esta vista.</p>
@@ -220,7 +306,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                                                 </span>
                                             </div>
                                             {ticket.ticket_padre_id && ticket.padre && (
-                                                <Link 
+                                                <Link
                                                     href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
                                                     onClick={(e) => e.stopPropagation()}
                                                     className="inline-flex items-center gap-1.5 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-medium mb-1 w-max"
@@ -236,7 +322,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                                     </td>
 
                                     <td className="px-6 py-4">
-                                        <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-1 mb-1.5">
+                                        <div className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors line-clamp-1 mb-1">
                                             {ticket.titulo}
                                         </div>
                                         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium whitespace-nowrap overflow-hidden text-ellipsis">
@@ -257,6 +343,23 @@ export default function TicketList({ limit }: { limit?: number }) {
                                             )}
                                         </div>
                                     </td>
+
+                                    {scope === 'equipo' && (
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            {(ticket.profiles as any)?.full_name ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="h-7 w-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                                        {(ticket.profiles as any).full_name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className="text-sm font-medium text-slate-700 truncate max-w-[130px]">
+                                                        {(ticket.profiles as any).full_name}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-sm text-slate-400">—</span>
+                                            )}
+                                        </td>
+                                    )}
 
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {ticket.restaurantes?.sigla ? (
@@ -286,7 +389,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                 </table>
             </div>
 
-            {/* VISTA MÓVIL (Tarjetas independientes) */}
+            {/* VISTA MÓVIL (Tarjetas) */}
             <div className="md:hidden flex flex-col p-4 bg-slate-50/50 border-t border-slate-200 gap-4">
                 {paginatedTickets.length === 0 ? (
                     <div className="px-6 py-12 text-center text-gray-500 bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -309,9 +412,15 @@ export default function TicketList({ limit }: { limit?: number }) {
                                         <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-800 text-white text-[10px] font-black tracking-widest shadow-sm">
                                             NC-{ticket.numero_ticket}
                                         </span>
+                                        {scope === 'equipo' && (ticket.profiles as any)?.full_name && (
+                                            <span className="inline-flex items-center gap-1 text-[10px] text-slate-500 font-semibold bg-slate-100 px-1.5 py-0.5 rounded">
+                                                <User className="w-2.5 h-2.5" />
+                                                {(ticket.profiles as any).full_name}
+                                            </span>
+                                        )}
                                     </div>
                                     {ticket.ticket_padre_id && ticket.padre && (
-                                        <Link 
+                                        <Link
                                             href={`/dashboard/ticket/${ticket.ticket_padre_id}`}
                                             onClick={(e) => e.stopPropagation()}
                                             className="inline-flex items-center gap-1 text-[10px] text-slate-500 hover:text-indigo-600 transition-colors font-bold w-max bg-slate-50 px-1.5 py-0.5 rounded"
@@ -345,7 +454,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                                 )}
                             </div>
 
-                            {/* Fila 4: Badges Consolidados */}
+                            {/* Fila 4: Badges */}
                             <div className="flex flex-wrap items-center justify-between gap-3 mt-1.5 pt-3 border-t border-slate-100">
                                 <div className="flex flex-wrap gap-2 items-center">
                                     {getPriorityBadge(ticket.prioridad)}
@@ -359,7 +468,7 @@ export default function TicketList({ limit }: { limit?: number }) {
                 )}
             </div>
 
-            {/* Pagination Controls / View All Switch */}
+            {/* Pagination */}
             {(!limit || searchTerm) && totalPages > 1 && (
                 <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
                     <button

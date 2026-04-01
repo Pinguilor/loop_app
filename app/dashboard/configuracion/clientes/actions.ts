@@ -33,15 +33,15 @@ export async function crearClienteAction(formData: FormData) {
         const rut             = (formData.get('rut')             as string)?.trim() || null;
         const logo_url        = (formData.get('logo_url')        as string)?.trim() || null;
 
-        if (!nombre_fantasia) return { error: 'El nombre del cliente es obligatorio.' };
+        if (!nombre_fantasia) return { error: 'El área / nombre de fantasía es obligatorio.' };
+        if (!razon_social)    return { error: 'La razón social es obligatoria.' };
 
         const { error } = await guard.supabase!
             .from('clientes')
             .insert({ nombre_fantasia, razon_social, rut, logo_url, activo: true });
 
         if (error) {
-            // Capturar error de RUT duplicado
-            if (error.code === '23505') return { error: 'Ya existe un cliente con ese RUT.' };
+            if (error.code === '23505') return { error: 'Esta área ya está registrada con ese RUT y nombre. Usa un nombre distinto para diferenciarla.' };
             throw new Error(error.message);
         }
 
@@ -68,6 +68,7 @@ export async function actualizarClienteAction(formData: FormData) {
         const logo_url        = (formData.get('logo_url')        as string)?.trim() || null;
 
         if (!id || !nombre_fantasia) return { error: 'ID y nombre son obligatorios.' };
+        if (!razon_social)           return { error: 'La razón social es obligatoria.' };
 
         const { error } = await guard.supabase!
             .from('clientes')
@@ -75,7 +76,7 @@ export async function actualizarClienteAction(formData: FormData) {
             .eq('id', id);
 
         if (error) {
-            if (error.code === '23505') return { error: 'Ya existe un cliente con ese RUT.' };
+            if (error.code === '23505') return { error: 'Esta área ya está registrada con ese RUT y nombre. Usa un nombre distinto para diferenciarla.' };
             throw new Error(error.message);
         }
 

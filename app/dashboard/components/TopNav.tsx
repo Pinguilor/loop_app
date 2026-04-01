@@ -319,7 +319,7 @@ export default function TopNav({ userFullName, userRole }: TopNavProps) {
                                                 onClick={() => handleResultClick(ticket.id)}
                                                 className="w-full text-left px-4 py-2.5 hover:bg-gray-50 transition-colors flex items-center gap-3 border-b border-gray-50 last:border-0"
                                             >
-                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">#{ticket.numero_ticket}</span>
+                                                <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">NC-{ticket.numero_ticket}</span>
                                                 <span className="text-sm font-medium text-slate-700 truncate">{ticket.titulo}</span>
                                             </button>
                                         ))

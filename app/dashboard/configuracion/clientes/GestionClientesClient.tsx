@@ -120,21 +120,22 @@ function ModalCrear({ onClose, onSuccess }: { onClose: () => void; onSuccess: ()
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
                     <FormField
-                        label="Nombre Fantasia" name="nombre_fantasia" required autoFocus
-                        placeholder="Ej: Arcos Dorados Chile"
-                        hint="Nombre comercial con el que aparecerá en el sistema."
+                        label="Área / Nombre de Fantasía" name="nombre_fantasia" required autoFocus
+                        placeholder="Ej: McDonald's - Continuidad"
+                        hint="Diferenciador del área o contrato dentro de la empresa. Ej: Arcos Dorados - RRHH."
                         icon={Building2}
                     />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField
-                            label="Razón Social" name="razon_social"
+                            label="Razón Social" name="razon_social" required
                             placeholder="Ej: Arcos Dorados Chile SpA"
+                            hint="Nombre legal de la empresa (obligatorio)."
                             icon={FileText}
                         />
                         <FormField
                             label="RUT Empresa" name="rut"
                             placeholder="Ej: 76.123.456-7"
-                            hint="Debe ser único en el sistema."
+                            hint="Varias áreas pueden compartir el mismo RUT tributario."
                             icon={Hash}
                         />
                     </div>
@@ -371,8 +372,7 @@ export function GestionClientesClient({ clientes: initialClientes }: { clientes:
                                                 )}
                                                 <div className="min-w-0">
                                                     <p className="text-sm font-bold text-slate-800 truncate">{cliente.nombre_fantasia}</p>
-                                                    {/* RUT visible en mobile */}
-                                                    <p className="text-xs text-slate-400 font-medium md:hidden">{cliente.rut || '—'}</p>
+                                                    <p className="text-xs text-slate-500 font-medium truncate">{cliente.razon_social || '—'}</p>
                                                 </div>
                                             </div>
                                         </td>

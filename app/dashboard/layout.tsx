@@ -15,8 +15,17 @@ export default async function DashboardLayout({
         redirect('/login');
     }
 
-    // Get User Profile for the Navbar
-    const { data: profile } = await supabase.from('profiles').select('full_name, rol').eq('id', user.id).maybeSingle();
+    // Get User Profile for the Navbar (incluye debe_cambiar_password para el route guard)
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, rol, debe_cambiar_password')
+        .eq('id', user.id)
+        .maybeSingle();
+
+    // Route guard: forzar cambio de contraseña antes de acceder al dashboard
+    if (profile?.debe_cambiar_password) {
+        redirect('/force-password');
+    }
 
     return (
         <div className="min-h-screen bg-brand-bg-base text-slate-900 font-sans">

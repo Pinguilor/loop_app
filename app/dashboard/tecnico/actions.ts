@@ -4,6 +4,24 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { TicketStatus } from '@/types/database.types';
 
+// ─── Types for grouped mochila view ──────────────────────────────────────────
+export interface ItemMochila {
+    id: string;
+    modelo: string;
+    familia: string;
+    es_serializado: boolean;
+    numero_serie: string | null;
+    cantidad: number;
+    tiene_devolucion_pendiente: boolean;
+}
+
+export interface GrupoTicket {
+    ticket_id: string | null;
+    numero_ticket: string | null;
+    titulo: string | null;
+    items: ItemMochila[];
+}
+
 export async function updateTicketStatusAction(
     ticketId: string,
     newStatus: TicketStatus,
@@ -45,6 +63,218 @@ export async function updateTicketStatusAction(
     // Refresh the UI
     revalidatePath('/dashboard/tecnico');
     return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mochila agrupada por ticket (nueva vista)
+// ─────────────────────────────────────────────────────────────────────────────
+export async function getTechnicianMochilaGroupedAction(): Promise<
+    { grupos: GrupoTicket[]; mochilaNombre: string; mochilaId: string } | { error: string }
+> {
+    try {
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return { error: 'No estás autenticado.' };
+
+        const { data: mochila, error: mochilaError } = await supabase
+            .from('bodegas')
+            .select('id, nombre')
+            .eq('tecnico_id', user.id)
+            .ilike('tipo', 'MOCHILA')
+            .maybeSingle();
+
+        if (mochilaError) throw new Error(mochilaError.message);
+        if (!mochila) return { error: 'NO_MOCHILA' };
+
+        // Leer ticket_id directamente desde el row de inventario (fuente primaria post-patch)
+        const { data: inventario, error: invError } = await supabase
+            .from('inventario')
+            .select('id, modelo, familia, es_serializado, numero_serie, cantidad, ticket_id')
+            .eq('bodega_id', mochila.id)
+            .gt('cantidad', 0);
+
+        if (invError) throw new Error(invError.message);
+
+        if (!inventario || inventario.length === 0) {
+            return { grupos: [], mochilaNombre: mochila.nombre, mochilaId: mochila.id };
+        }
+
+        const invIds = inventario.map(i => i.id);
+
+        // Recopilar todos los ticket_id únicos (directos + vía movimientos)
+        const directTicketIds = [
+            ...new Set(inventario.map(i => (i as any).ticket_id).filter(Boolean) as string[]),
+        ];
+
+        // Movimientos → fallback para ítems cuyo row de inventario no tiene ticket_id
+        // (stock previo al patch del RPC)
+        const { data: movimientos } = await supabase
+            .from('movimientos_inventario')
+            .select('inventario_id, ticket_id, tickets:ticket_id ( numero_ticket, titulo )')
+            .in('inventario_id', invIds)
+            .eq('bodega_destino_id', mochila.id)
+            .order('fecha_movimiento', { ascending: false });
+
+        // Mapa ticket_id → info, construido desde movimientos
+        const ticketInfoById: Record<string, { numero_ticket: string | null; titulo: string | null }> = {};
+        const itemMovTicketMap: Record<string, { ticket_id: string | null; numero_ticket: string | null; titulo: string | null }> = {};
+
+        for (const mov of movimientos || []) {
+            const m = mov as any;
+            if (m.ticket_id && !ticketInfoById[m.ticket_id]) {
+                ticketInfoById[m.ticket_id] = {
+                    numero_ticket: m.tickets?.numero_ticket?.toString() ?? null,
+                    titulo:        m.tickets?.titulo ?? null,
+                };
+            }
+            if (!itemMovTicketMap[m.inventario_id]) {
+                itemMovTicketMap[m.inventario_id] = {
+                    ticket_id:     m.ticket_id ?? null,
+                    numero_ticket: m.tickets?.numero_ticket?.toString() ?? null,
+                    titulo:        m.tickets?.titulo ?? null,
+                };
+            }
+        }
+
+        // Para ticket_ids directos que no aparecen en movimientos, consultar tickets
+        const missingIds = directTicketIds.filter(id => !ticketInfoById[id]);
+        if (missingIds.length > 0) {
+            const { data: extraTickets } = await supabase
+                .from('tickets')
+                .select('id, numero_ticket, titulo')
+                .in('id', missingIds);
+            for (const t of extraTickets || []) {
+                ticketInfoById[(t as any).id] = {
+                    numero_ticket: (t as any).numero_ticket?.toString() ?? null,
+                    titulo:        (t as any).titulo ?? null,
+                };
+            }
+        }
+
+        // Solicitudes de devolución pendientes del técnico
+        const { data: devsPendientes } = await supabase
+            .from('solicitudes_devoluciones')
+            .select('inventario_id')
+            .eq('tecnico_id', user.id)
+            .eq('estado', 'pendiente');
+
+        const pendingSet = new Set((devsPendientes || []).map((d: any) => d.inventario_id));
+
+        // Agrupar por ticket_id
+        // Prioridad: ticket_id en el row de inventario → movimientos → sin_ticket
+        const gruposMap: Record<string, GrupoTicket> = {};
+        for (const item of inventario) {
+            const directTid = (item as any).ticket_id as string | null ?? null;
+
+            let groupKey: string;
+            let groupTicketId: string | null;
+            let groupNumero: string | null;
+            let groupTitulo: string | null;
+
+            if (directTid) {
+                // Post-patch: ticket_id viene directo del row de inventario
+                const info = ticketInfoById[directTid];
+                groupKey      = directTid;
+                groupTicketId = directTid;
+                groupNumero   = info?.numero_ticket ?? null;
+                groupTitulo   = info?.titulo ?? null;
+            } else {
+                // Backwards-compat: buscar en movimientos
+                const movInfo = itemMovTicketMap[item.id];
+                groupKey      = movInfo?.ticket_id ?? 'sin_ticket';
+                groupTicketId = movInfo?.ticket_id ?? null;
+                groupNumero   = movInfo?.numero_ticket ?? null;
+                groupTitulo   = movInfo?.titulo ?? null;
+            }
+
+            if (!gruposMap[groupKey]) {
+                gruposMap[groupKey] = {
+                    ticket_id:     groupTicketId,
+                    numero_ticket: groupNumero,
+                    titulo:        groupTitulo,
+                    items: [],
+                };
+            }
+            gruposMap[groupKey].items.push({
+                id:                         item.id,
+                modelo:                     item.modelo,
+                familia:                    item.familia,
+                es_serializado:             item.es_serializado,
+                numero_serie:               item.numero_serie ?? null,
+                cantidad:                   item.cantidad,
+                tiene_devolucion_pendiente: pendingSet.has(item.id),
+            });
+        }
+
+        // Tickets primero (ordenados), luego sin_ticket al final
+        const grupos = Object.values(gruposMap).sort((a, b) => {
+            if (a.ticket_id === null) return 1;
+            if (b.ticket_id === null) return -1;
+            return (b.numero_ticket ?? '').localeCompare(a.numero_ticket ?? '');
+        });
+
+        return { grupos, mochilaNombre: mochila.nombre, mochilaId: mochila.id };
+    } catch (e: any) {
+        return { error: e.message || 'Error interno al cargar la mochila.' };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Solicitar devolución de material (desde técnico)
+// ─────────────────────────────────────────────────────────────────────────────
+export async function solicitarDevolucionAction(
+    ticketId: string | null,
+    inventarioId: string,
+    cantidad: number,
+    motivo: string
+): Promise<{ success: true } | { error: string }> {
+    try {
+        const supabase = await createClient();
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        if (authError || !user) return { error: 'No estás autenticado.' };
+
+        // Verificar que no haya una solicitud pendiente para el mismo ítem
+        const { data: existente } = await supabase
+            .from('solicitudes_devoluciones')
+            .select('id')
+            .eq('tecnico_id', user.id)
+            .eq('inventario_id', inventarioId)
+            .eq('estado', 'pendiente')
+            .maybeSingle();
+
+        if (existente) return { error: 'Ya existe una solicitud pendiente para este material.' };
+
+        // Validar stock
+        const { data: inv } = await supabase
+            .from('inventario')
+            .select('cantidad, es_serializado')
+            .eq('id', inventarioId)
+            .maybeSingle();
+
+        if (!inv) return { error: 'Material no encontrado.' };
+        if (cantidad < 1) return { error: 'La cantidad debe ser al menos 1.' };
+        if (!inv.es_serializado && cantidad > inv.cantidad) {
+            return { error: `Stock insuficiente. Disponible: ${inv.cantidad}.` };
+        }
+
+        const { error: insertErr } = await supabase
+            .from('solicitudes_devoluciones')
+            .insert({
+                tecnico_id:   user.id,
+                ticket_id:    ticketId ?? null,
+                inventario_id: inventarioId,
+                cantidad,
+                motivo:       motivo.trim() || null,
+                estado:       'pendiente',
+            });
+
+        if (insertErr) throw new Error(insertErr.message);
+
+        revalidatePath('/dashboard/tecnico/mochila');
+        return { success: true };
+    } catch (e: any) {
+        return { error: e.message || 'Error al solicitar la devolución.' };
+    }
 }
 
 export async function getTechnicianMochilaAction() {

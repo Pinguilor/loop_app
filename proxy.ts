@@ -54,6 +54,11 @@ export async function proxy(request: NextRequest) {
             return supabaseResponse;
         }
 
+        // Shared route bypass: Cambio obligatorio de contraseña (primer login)
+        if (url.pathname.startsWith('/force-password')) {
+            return supabaseResponse;
+        }
+
         // Shared route bypass: Permitir acceso a Analíticas y Perfil a cualquier usuario autenticado
         if (url.pathname.startsWith('/dashboard/analiticas') || url.pathname.startsWith('/dashboard/perfil')) {
             return supabaseResponse;

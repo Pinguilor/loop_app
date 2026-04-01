@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { GestionSolicitudesClient } from './GestionSolicitudesClient';
-import { getSolicitudesMaterialesAction, getBodegasCentralesAction } from './actions';
+import {
+    getSolicitudesMaterialesAction,
+    getSolicitudesDevolucionAction,
+    getBodegasCentralesAction,
+} from './actions';
 
 export const metadata = {
-    title: 'Solicitudes de Materiales — Systel Loop',
-    description: 'Gestión de solicitudes de materiales enviadas por técnicos a bodega.',
+    title: 'Gestión de Solicitudes y Devoluciones — Systel Loop',
+    description: 'Bandeja unificada de entregas y reingresos de materiales.',
 };
 
 export default async function SolicitudesPage() {
@@ -22,20 +26,20 @@ export default async function SolicitudesPage() {
 
     const rol = profile?.rol?.toUpperCase() || '';
 
-    // Solo admin_bodega, admin y coordinador pueden acceder
     if (!['ADMIN_BODEGA', 'ADMIN', 'COORDINADOR'].includes(rol)) {
         redirect('/dashboard');
     }
 
-    // Fetch en paralelo
-    const [solicitudesResult, bodegasResult] = await Promise.all([
+    const [solicitudesResult, devolucionesResult, bodegasResult] = await Promise.all([
         getSolicitudesMaterialesAction(),
+        getSolicitudesDevolucionAction(),
         getBodegasCentralesAction(),
     ]);
 
     return (
         <GestionSolicitudesClient
             solicitudes={solicitudesResult.data ?? []}
+            devoluciones={devolucionesResult.data ?? []}
             bodegasCentrales={bodegasResult.data ?? []}
         />
     );

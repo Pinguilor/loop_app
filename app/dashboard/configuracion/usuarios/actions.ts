@@ -83,27 +83,24 @@ export async function crearUsuarioAction(formData: FormData) {
 
         const nombre     = (formData.get('nombre')     as string)?.trim();
         const email      = (formData.get('email')      as string)?.trim();
-        const password   = (formData.get('password')   as string)?.trim();
         const rol        = (formData.get('rol')        as string)?.trim().toLowerCase();
         const cliente_id = (formData.get('cliente_id') as string)?.trim() || null;
 
-        if (!nombre || !email || !password || !rol) {
-            return { error: 'Todos los campos son obligatorios.' };
-        }
-        if (password.length < 6) {
-            return { error: 'La contraseña debe tener al menos 6 caracteres.' };
+        if (!nombre || !email || !rol) {
+            return { error: 'Nombre, correo y rol son obligatorios.' };
         }
         // Si el rol es 'usuario', debe tener empresa asignada
         if (rol === 'usuario' && !cliente_id) {
             return { error: 'Los usuarios externos deben tener una empresa asignada.' };
         }
 
-        const adminSupabase = getAdminClient();
+        const PASSWORD_DEFAULT = 'SystelPassword';
+        const adminSupabase    = getAdminClient();
 
-        // 1. Crear usuario en Auth
+        // 1. Crear usuario en Auth con contraseña por defecto
         const { data: authData, error: authError } = await adminSupabase.auth.admin.createUser({
             email,
-            password,
+            password:      PASSWORD_DEFAULT,
             email_confirm: true,
             user_metadata: { full_name: nombre, rol },
         });
@@ -113,14 +110,15 @@ export async function crearUsuarioAction(formData: FormData) {
 
         const uid = authData.user.id;
 
-        // 2. Upsert en public.profiles con cliente_id
+        // 2. Upsert en public.profiles — marca debe_cambiar_password para forzar cambio en primer login
         const { error: profileError } = await adminSupabase
             .from('profiles')
             .upsert({
-                id:         uid,
-                full_name:  nombre,
-                rol:        rol,
-                cliente_id: rol === 'usuario' ? cliente_id : null,
+                id:                    uid,
+                full_name:             nombre,
+                rol:                   rol,
+                cliente_id:            rol === 'usuario' ? cliente_id : null,
+                debe_cambiar_password: true,
             }, { onConflict: 'id' });
 
         if (profileError) {
@@ -129,7 +127,7 @@ export async function crearUsuarioAction(formData: FormData) {
         }
 
         revalidatePath(RUTA);
-        return { success: true };
+        return { success: true, defaultPassword: PASSWORD_DEFAULT };
     } catch (e: any) {
         return { error: e.message || 'Error interno al crear el usuario.' };
     }

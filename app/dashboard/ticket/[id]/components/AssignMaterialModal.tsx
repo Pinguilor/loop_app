@@ -1,134 +1,259 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { PackageSearch, X, Server, Package, Loader2, AlertTriangle } from 'lucide-react';
+import {
+    PackageSearch, X, Loader2, AlertTriangle,
+    Hash, Layers, ShoppingCart, Minus, Plus, Ticket, Package,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { assignMaterialAction } from '../actions';
+import { assignMaterialsBatchAction } from '../actions';
 import { useRouter } from 'next/navigation';
-import { CustomSelect } from '@/app/dashboard/components/CustomSelect';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+interface StockItem {
+    id: string;
+    modelo: string;
+    familia: string;
+    es_serializado: boolean;
+    numero_serie: string | null;
+    cantidad: number;
+    cantidadDisponible: number;
+    ticket_id: string | null;
+}
 
 interface AssignMaterialModalProps {
     ticketId: string;
     onClose: () => void;
 }
 
+// ─── Stepper ─────────────────────────────────────────────────────────────────
+function Stepper({
+    value, max, onChange, bloqueado,
+}: {
+    value: number; max: number; onChange: (n: number) => void; bloqueado: boolean;
+}) {
+    if (bloqueado) {
+        return (
+            <span className="text-xs font-semibold text-red-400 bg-red-50 border border-red-100 px-2 py-1 rounded-lg whitespace-nowrap">
+                Bloqueado por devolución
+            </span>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-1 shrink-0">
+            <button
+                type="button"
+                onClick={() => onChange(Math.max(0, value - 1))}
+                disabled={value === 0}
+                className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all
+                    disabled:opacity-25 disabled:cursor-not-allowed
+                    border-slate-200 text-slate-500
+                    hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600
+                    active:scale-90"
+            >
+                <Minus className="w-3 h-3" />
+            </button>
+
+            <span className={`w-8 text-center text-sm font-black tabular-nums select-none transition-colors ${
+                value > 0 ? 'text-indigo-700' : 'text-slate-300'
+            }`}>
+                {value}
+            </span>
+
+            <button
+                type="button"
+                onClick={() => onChange(Math.min(max, value + 1))}
+                disabled={value >= max}
+                className="w-7 h-7 rounded-lg flex items-center justify-center border transition-all
+                    disabled:opacity-25 disabled:cursor-not-allowed
+                    border-slate-200 text-slate-500
+                    hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-600
+                    active:scale-90"
+            >
+                <Plus className="w-3 h-3" />
+            </button>
+        </div>
+    );
+}
+
+// ─── Item Row ─────────────────────────────────────────────────────────────────
+function ItemRow({ item, value, onChange }: { item: StockItem; value: number; onChange: (n: number) => void }) {
+    const isSelected  = value > 0;
+    const bloqueado   = item.cantidadDisponible <= 0;
+    const max         = item.es_serializado ? 1 : item.cantidadDisponible;
+
+    return (
+        <div className={`flex items-center justify-between gap-3 px-4 py-3 transition-colors ${
+            bloqueado   ? 'opacity-60 bg-slate-50/40' :
+            isSelected  ? 'bg-indigo-50/60' : 'hover:bg-slate-50/60'
+        }`}>
+            {/* Left: icon + info */}
+            <div className="flex items-center gap-3 min-w-0">
+                <div className={`p-1.5 rounded-lg shrink-0 ${
+                    item.es_serializado ? 'bg-indigo-50 text-indigo-500' : 'bg-amber-50 text-amber-500'
+                }`}>
+                    {item.es_serializado ? <Hash className="w-3.5 h-3.5" /> : <Layers className="w-3.5 h-3.5" />}
+                </div>
+
+                <div className="min-w-0">
+                    <p className={`text-sm font-bold truncate transition-colors ${
+                        isSelected ? 'text-indigo-900' : 'text-slate-700'
+                    }`}>
+                        {item.modelo}
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                            {item.familia}
+                        </span>
+                        {item.es_serializado && item.numero_serie && (
+                            <span className="font-mono text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                {item.numero_serie}
+                            </span>
+                        )}
+                        {!item.es_serializado && !bloqueado && (
+                            <span className={`text-xs font-bold px-1.5 py-0.5 rounded transition-colors ${
+                                isSelected ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                                {item.cantidadDisponible} disp.
+                            </span>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* Right: stepper o badge bloqueado */}
+            <Stepper value={value} max={max} onChange={onChange} bloqueado={bloqueado} />
+        </div>
+    );
+}
+
+// ─── Section Header ───────────────────────────────────────────────────────────
+function SectionHeader({ icon, label, count }: { icon: React.ReactNode; label: string; count: number }) {
+    return (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+            {icon}
+            <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+            <span className="ml-auto text-[11px] font-bold text-slate-400">{count} ítem{count !== 1 ? 's' : ''}</span>
+        </div>
+    );
+}
+
+// ─── Main Modal ───────────────────────────────────────────────────────────────
 export function AssignMaterialModal({ ticketId, onClose }: AssignMaterialModalProps) {
-    const [stockMochila, setStockMochila] = useState<any[]>([]);
+    const [stockMochila, setStockMochila] = useState<StockItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [mochilaNotFound, setMochilaNotFound] = useState(false);
-
-    const [selectedFamilia, setSelectedFamilia] = useState('');
-    const [selectedInventarioId, setSelectedInventarioId] = useState('');
-    const [cantidad, setCantidad] = useState(1);
+    const [consumo, setConsumo] = useState<Record<string, number>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
     const [mounted, setMounted] = useState(false);
-    
+
     const router = useRouter();
 
     useEffect(() => {
         setMounted(true);
         async function fetchMochilaStock() {
-            setLoading(true);
-            const supabase = createClient();
-            const { data: { user } } = await supabase.auth.getUser();
-            
-            if (!user) {
+            try {
+                setLoading(true);
+                const supabase = createClient();
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                // 1. Traer TODAS las bodegas de este usuario (sin filtros frágiles de texto en SQL)
+                const { data: bodegas, error: errBodegas } = await supabase
+                    .from('bodegas')
+                    .select('id, tipo')
+                    .eq('tecnico_id', user.id);
+
+                if (errBodegas) throw errBodegas;
+
+                // 2. Buscar la mochila usando JS puro para evitar problemas de Case Sensitivity
+                const miMochila = bodegas?.find(b => b.tipo?.toUpperCase() === 'MOCHILA');
+                if (!miMochila) {
+                    setMochilaNotFound(true);
+                    return;
+                }
+
+                // 3. Traer el inventario físico > 0
+                const { data: inventory, error: errInv } = await supabase
+                    .from('inventario')
+                    .select('*')
+                    .eq('bodega_id', miMochila.id)
+                    .gt('cantidad', 0);
+
+                if (errInv) throw errInv;
+                if (!inventory || inventory.length === 0) return;
+
+                // 4. Buscar devoluciones pendientes para calcular el bloqueo
+                const invIds = inventory.map(i => i.id);
+                const { data: devolsPendientes } = await supabase
+                    .from('solicitudes_devoluciones')
+                    .select('inventario_id, cantidad')
+                    .in('inventario_id', invIds)
+                    .eq('estado', 'pendiente');
+
+                const blockedMap: Record<string, number> = {};
+                for (const d of devolsPendientes || []) {
+                    blockedMap[d.inventario_id] = (blockedMap[d.inventario_id] || 0) + (d.cantidad || 0);
+                }
+
+                // 5. Enriquecer los datos sin filtrar el array
+                const enriched: StockItem[] = inventory.map(item => ({
+                    id: item.id,
+                    modelo: item.modelo,
+                    familia: item.familia,
+                    es_serializado: item.es_serializado,
+                    numero_serie: item.numero_serie || null,
+                    cantidad: item.cantidad,
+                    cantidadDisponible: Math.max(0, item.cantidad - (blockedMap[item.id] || 0)),
+                    ticket_id: item.ticket_id || null,
+                })).sort((a, b) => {
+                    // Usamos un string vacío ('') como fallback si el modelo es null o undefined
+                    const modeloA = a.modelo || '';
+                    const modeloB = b.modelo || '';
+                    return modeloA.localeCompare(modeloB);
+                });
+
+                setStockMochila(enriched);
+            } catch (e) {
+                console.error('🚨 ERROR CRÍTICO CARGANDO MOCHILA:', e);
+            } finally {
                 setLoading(false);
-                return;
             }
-
-            // Conseguir la bodega (mochila) del usuario actual
-            const { data: mochila, error: bgeError } = await supabase
-                .from('bodegas')
-                .select('id')
-                .eq('tipo', 'MOCHILA')
-                .eq('tecnico_id', user.id)
-                .maybeSingle();
-
-            if (!mochila) {
-                setMochilaNotFound(true);
-                setLoading(false);
-                return;
-            }
-
-            // Conseguir el inventario disponible de su mochila sin uniones rotas
-            const { data: inventory } = await supabase
-                .from('inventario')
-                .select('*')
-                .eq('bodega_id', mochila.id)
-                .eq('estado', 'Disponible')
-                .gt('cantidad', 0);
-
-            if (inventory) {
-                setStockMochila(inventory);
-            }
-            setLoading(false);
         }
-
         fetchMochilaStock();
     }, []);
 
-    // Extraer Familias únicas del stock de la Mochila
-    const familias = useMemo(() => {
-        const unique = new Set(stockMochila.map(item => item.familia).filter(Boolean));
-        return Array.from(unique);
-    }, [stockMochila]);
+    // Split into two sections
+    const itemsDeEsteTicket = stockMochila.filter(i => i.ticket_id === ticketId);
+    const itemsOtros        = stockMochila.filter(i => i.ticket_id !== ticketId);
 
-    const inventariosDisponibles = useMemo(() => {
-        if (!selectedFamilia) return [];
-        const filtered = stockMochila.filter(item => item.familia === selectedFamilia);
-        const unique = new Map();
-        
-        filtered.forEach(item => {
-             if (item.es_serializado) {
-                 unique.set(item.id, {
-                     id: item.id,
-                     label: `${item.modelo} (SN: ${item.numero_serie || 'N/A'})`,
-                     es_serializado: true,
-                     max: 1
-                 });
-             } else {
-                 const key = `${item.modelo}|${item.familia}`;
-                 if (!unique.has(key)) {
-                     unique.set(key, { 
-                         id: item.id,
-                         label: item.modelo,
-                         es_serializado: false,
-                         max: 0
-                     });
-                 }
-                 unique.get(key).max += item.cantidad;
-             }
+    const setItemConsumo = (id: string, n: number) => {
+        setConsumo(prev => {
+            if (n <= 0) {
+                const { [id]: _, ...rest } = prev;
+                return rest;
+            }
+            return { ...prev, [id]: n };
         });
-        
-        return Array.from(unique.values()).map(m => {
-             if (!m.es_serializado) m.label = `${m.label} (${m.max} disponibles)`;
-             return m;
-        });
-    }, [selectedFamilia, stockMochila]);
+    };
 
-    const objSeleccionado = inventariosDisponibles.find(m => m.id === selectedInventarioId);
-    const maxQuantity = objSeleccionado?.max || 1;
-    const esSerializado = objSeleccionado?.es_serializado || false;
+    const totalUnidades = Object.values(consumo).reduce((a, b) => a + b, 0);
+    const totalItems    = Object.keys(consumo).length;
 
-    useEffect(() => {
-        if (!inventariosDisponibles.find(m => m.id === selectedInventarioId)) {
-            setSelectedInventarioId('');
-            setCantidad(1);
-        }
-    }, [selectedFamilia, inventariosDisponibles]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedInventarioId) return;
-
+    const handleConfirm = async () => {
+        if (totalUnidades === 0) return;
+        setSubmitError(null);
         setIsSubmitting(true);
-        const res = await assignMaterialAction(ticketId, selectedInventarioId, esSerializado ? 1 : cantidad);
-        setIsSubmitting(false);
 
-        if (res.error) {
-            alert(res.error);
+        const payload = Object.entries(consumo).map(([inventarioId, cantidad]) => ({ inventarioId, cantidad }));
+        const res = await assignMaterialsBatchAction(ticketId, payload);
+
+        setIsSubmitting(false);
+        if ('error' in res) {
+            setSubmitError(res.error ?? 'Error desconocido.');
         } else {
             router.refresh();
             onClose();
@@ -138,96 +263,154 @@ export function AssignMaterialModal({ ticketId, onClose }: AssignMaterialModalPr
     if (!mounted) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] flex justify-end bg-slate-900/60 backdrop-blur-sm transition-opacity">
+        <div className="fixed inset-0 z-[9999] flex justify-end bg-slate-900/60 backdrop-blur-sm">
             <div className="bg-white w-full max-w-md h-full shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
-                <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50/50 shrink-0">
-                    <div>
-                        <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+
+                {/* ── Header ── */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-indigo-100 rounded-xl shrink-0">
                             <PackageSearch className="w-5 h-5 text-indigo-600" />
-                            Consumo de Mochila
-                        </h3>
-                        <p className="text-[11px] font-bold text-slate-500 tracking-wide mt-1 uppercase">Inventario asignado al Ticket</p>
+                        </div>
+                        <div>
+                            <h3 className="text-base font-black text-slate-900">Consumo de Mochila</h3>
+                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">
+                                Selecciona los materiales a registrar
+                            </p>
+                        </div>
                     </div>
-                    <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors border border-transparent shadow-sm">
+                    <button
+                        onClick={onClose}
+                        className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                    >
                         <X className="w-5 h-5" />
                     </button>
                 </div>
 
+                {/* ── Body ── */}
                 {loading ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-50">
-                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 opacity-60">
+                        <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-3" />
                         <span className="text-sm font-bold text-slate-600">Escaneando tu mochila virtual...</span>
                     </div>
+
                 ) : mochilaNotFound ? (
-                    <div className="flex-1 flex flex-col justify-center p-8 space-y-4">
-                        <div className="bg-red-50 text-red-500 p-4 rounded-full w-20 h-20 mx-auto flex items-center justify-center">
-                            <AlertTriangle className="w-8 h-8" />
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
+                        <div className="p-5 bg-red-50 rounded-full">
+                            <AlertTriangle className="w-8 h-8 text-red-400" />
                         </div>
-                        <h4 className="text-lg font-black text-center text-slate-900">Mochila no configurada</h4>
-                        <p className="text-sm text-center text-slate-500 font-medium">
-                            Tu cuenta no tiene una "Mochila Virtual" asignada en el sistema, o está vacía. Contacta con coordinación para que te asignen tu bodega predeterminada (tecnico_id).
-                        </p>
-                    </div>
-                ) : (
-                    <form onSubmit={handleSubmit} className="p-5 overflow-y-auto flex-1 flex flex-col gap-4 custom-scrollbar">
                         <div>
-                            <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">Familia de Hardware (Tu Stock)</label>
-                            <CustomSelect 
-                                id="familia-select"
-                                value={selectedFamilia} 
-                                onChange={setSelectedFamilia}
-                                options={familias.map(f => ({ value: String(f), label: String(f) }))}
-                                placeholder="Seleccionar Familia..."
-                                required
-                            />
-                            {familias.length === 0 && <span className="text-xs text-amber-500 font-bold mt-2 inline-block shadow-sm">Tu mochila está físicamente vacía. Pide material a central.</span>}
+                            <h4 className="text-base font-black text-slate-900 mb-1">Mochila no configurada</h4>
+                            <p className="text-sm text-slate-500 font-medium">
+                                Tu cuenta no tiene una mochila virtual asignada. Contacta con coordinación.
+                            </p>
                         </div>
+                    </div>
 
-                        {selectedFamilia && (
+                ) : stockMochila.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center gap-4">
+                        <div className="p-5 bg-slate-100 rounded-full">
+                            <PackageSearch className="w-8 h-8 text-slate-400" />
+                        </div>
+                        <div>
+                            <h4 className="text-base font-black text-slate-900 mb-1">Mochila vacía</h4>
+                            <p className="text-sm text-slate-500 font-medium">
+                                No tienes materiales disponibles. Solicita despacho al bodeguero.
+                            </p>
+                        </div>
+                    </div>
+
+                ) : (
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+
+                        {/* Section: Asignados a este ticket */}
+                        {itemsDeEsteTicket.length > 0 && (
                             <div>
-                                <label className="block text-[11px] font-black uppercase text-slate-400 mb-1.5 tracking-wider">Repuesto Específico</label>
-                                <CustomSelect 
-                                    id="modelo-select"
-                                    value={selectedInventarioId} 
-                                    onChange={val => { setSelectedInventarioId(val); setCantidad(1); }}
-                                    options={inventariosDisponibles.map(m => ({ value: m.id, label: m.label }))}
-                                    placeholder="Elegir Repuesto..."
-                                    required
+                                <SectionHeader
+                                    icon={<Ticket className="w-3.5 h-3.5 text-indigo-500" />}
+                                    label="Asignados a este Ticket"
+                                    count={itemsDeEsteTicket.length}
                                 />
-                            </div>
-                        )}
-
-                        {selectedInventarioId && objSeleccionado && !esSerializado && (
-                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 shadow-inner">
-                                <div>
-                                    <label className="block text-[11px] font-black uppercase text-slate-600 mb-1.5 tracking-wider flex items-center gap-1"><Package className="w-3.5 h-3.5" /> Cantidad a Extraer</label>
-                                    <div className="flex items-center gap-3">
-                                        <input 
-                                            type="number" 
-                                            min="1" 
-                                            max={maxQuantity}
-                                            value={cantidad} 
-                                            onChange={e => setCantidad(Number(e.target.value))}
-                                            className="w-24 text-center text-lg font-black text-indigo-900 border border-indigo-200 bg-white rounded-xl py-2.5 px-3 focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
-                                            required
+                                <div className="divide-y divide-slate-100">
+                                    {itemsDeEsteTicket.map(item => (
+                                        <ItemRow
+                                            key={item.id}
+                                            item={item}
+                                            value={consumo[item.id] || 0}
+                                            onChange={n => setItemConsumo(item.id, n)}
                                         />
-                                        <span className="text-xs font-black text-indigo-400 bg-indigo-50 px-2 py-1 rounded-md uppercase tracking-widest">LÍMITE MÁXIMO: {maxQuantity}</span>
-                                    </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
-                        {/* FOOTER */}
-                        <div className="pt-6 mt-auto shrink-0 flex gap-3">
-                            <button type="button" onClick={onClose} disabled={isSubmitting} className="flex-1 px-4 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 hover:text-slate-900 transition-all active:scale-95 shadow-sm">Cancelar</button>
-                            <button 
-                                type="submit" 
-                                disabled={isSubmitting || !!mochilaNotFound || stockMochila.length === 0 || cantidad <= 0 || !selectedInventarioId} 
-                                className="flex-1 px-4 py-3 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex justify-center items-center active:scale-95 shadow-md shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+
+                        {/* Section: Stock general / Otros */}
+                        {itemsOtros.length > 0 && (
+                            <div>
+                                <SectionHeader
+                                    icon={<Package className="w-3.5 h-3.5 text-slate-400" />}
+                                    label={itemsDeEsteTicket.length > 0 ? 'Stock General / Otros' : 'Stock en Mochila'}
+                                    count={itemsOtros.length}
+                                />
+                                <div className="divide-y divide-slate-100">
+                                    {itemsOtros.map(item => (
+                                        <ItemRow
+                                            key={item.id}
+                                            item={item}
+                                            value={consumo[item.id] || 0}
+                                            onChange={n => setItemConsumo(item.id, n)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* ── Footer ── */}
+                {!loading && !mochilaNotFound && (
+                    <div className="px-5 py-4 border-t border-slate-100 bg-white shrink-0 space-y-3">
+
+                        {submitError && (
+                            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                                <p className="text-xs font-semibold text-red-700">{submitError}</p>
+                            </div>
+                        )}
+
+                        {totalUnidades > 0 && (
+                            <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
+                                <ShoppingCart className="w-4 h-4 text-indigo-600 shrink-0" />
+                                <span className="text-xs font-bold text-indigo-700">
+                                    {totalItems} ítem{totalItems !== 1 ? 's' : ''}
+                                    {' · '}
+                                    {totalUnidades} unidad{totalUnidades !== 1 ? 'es' : ''} seleccionada{totalUnidades !== 1 ? 's' : ''}
+                                </span>
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                disabled={isSubmitting}
+                                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50"
                             >
-                                {isSubmitting ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Confirmar Consumo'}
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirm}
+                                disabled={isSubmitting || totalUnidades === 0}
+                                className="flex-1 px-4 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex justify-center items-center gap-2 active:scale-95 shadow-md shadow-indigo-600/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {isSubmitting
+                                    ? <><Loader2 className="w-4 h-4 animate-spin" /> Registrando...</>
+                                    : <><ShoppingCart className="w-4 h-4" /> Confirmar Consumo</>
+                                }
                             </button>
                         </div>
-                    </form>
+                    </div>
                 )}
             </div>
         </div>,

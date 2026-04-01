@@ -22,13 +22,13 @@ export default async function tecnicoDashboard() {
         redirect('/dashboard/usuario');
     }
 
-    // Fetch ONLY tickets assigned to this agent
+    // Fetch ONLY tickets assigned to this agent — clientes viene anidado a través de profiles.cliente_id
     const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
-            *, 
-            profiles:creado_por(full_name), 
-            restaurantes(nombre_restaurante), 
+            *,
+            profiles:creado_por(full_name, clientes:cliente_id(nombre_fantasia)),
+            restaurantes(nombre_restaurante),
             catalogo_servicios(categoria, subcategoria, elemento),
             padre:ticket_padre_id(numero_ticket)
         `)

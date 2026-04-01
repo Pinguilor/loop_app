@@ -20,16 +20,15 @@ export default async function AdminDashboard() {
         redirect(profile?.rol?.toUpperCase() === 'TECNICO' ? '/dashboard/tecnico' : '/dashboard/usuario');
     }
 
-    // Fetch ALL tickets for Admin — incluye JOIN a clientes para vista Multi-Tenant
+    // Fetch ALL tickets for Admin — clientes viene anidado a través de profiles.cliente_id
     const { data: tickets, error } = await supabase
         .from('tickets')
         .select(`
-            *, 
-            profiles:creado_por(full_name), 
-            restaurantes(nombre_restaurante), 
+            *,
+            profiles:creado_por(full_name, clientes:cliente_id(nombre_fantasia)),
+            restaurantes(nombre_restaurante),
             catalogo_servicios(categoria, subcategoria, elemento),
-            padre:ticket_padre_id(numero_ticket),
-            clientes(nombre_fantasia)
+            padre:ticket_padre_id(numero_ticket)
         `)
         .order('fecha_creacion', { ascending: false });
 

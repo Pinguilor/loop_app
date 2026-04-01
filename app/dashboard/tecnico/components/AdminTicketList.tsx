@@ -46,7 +46,7 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                 const matchDesc = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
                 const matchName = (ticket.profiles?.full_name || '').toLowerCase().includes(lowerSearch);
                 const matchRestaurante = (ticket.restaurantes?.nombre_restaurante || '').toLowerCase().includes(lowerSearch);
-                const matchCliente = ((ticket as any).clientes?.nombre_fantasia || '').toLowerCase().includes(lowerSearch);
+                const matchCliente = ((ticket.profiles as any)?.clientes?.nombre_fantasia || '').toLowerCase().includes(lowerSearch);
                 return matchId || matchTitle || matchDesc || matchName || matchRestaurante || matchCliente;
             });
         }
@@ -223,11 +223,11 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
 
                                     {/* Cliente */}
                                     <td className="px-6 py-4 whitespace-nowrap">
-                                        {(ticket as any).clientes?.nombre_fantasia ? (
+                                        {(ticket.profiles as any)?.clientes?.nombre_fantasia ? (
                                             <div className="flex items-center gap-2">
                                                 <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]" title={(ticket as any).clientes.nombre_fantasia}>
-                                                    {(ticket as any).clientes.nombre_fantasia}
+                                                <span className="text-sm font-medium text-slate-700 truncate max-w-[160px]" title={(ticket.profiles as any)?.clientes?.nombre_fantasia}>
+                                                    {(ticket.profiles as any)?.clientes?.nombre_fantasia?.replace(/\s*\[.*?\]/g, '').trim()}
                                                 </span>
                                             </div>
                                         ) : (
@@ -339,10 +339,10 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
 
                             {/* Fila 3: Ubicación, Cliente y Categoría */}
                             <div className="flex flex-col gap-1.5 text-[11px] text-slate-500">
-                                {(ticket as any).clientes?.nombre_fantasia && (
+                                {(ticket.profiles as any)?.clientes?.nombre_fantasia && (
                                     <span className="font-bold text-violet-700 flex items-center gap-1.5 bg-violet-50 px-2.5 py-1 w-max rounded-lg border border-violet-100">
                                         <Building2 className="w-3 h-3 text-violet-400 shrink-0" />
-                                        {(ticket as any).clientes.nombre_fantasia}
+                                        {(ticket.profiles as any)?.clientes?.nombre_fantasia?.replace(/\s*\[.*?\]/g, '').trim()}
                                     </span>
                                 )}
                                 {ticket.restaurantes?.nombre_restaurante && (

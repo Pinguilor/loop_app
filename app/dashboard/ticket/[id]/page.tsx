@@ -19,8 +19,9 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
     const ticketId = unwrappedParams.id;
 
     // Get User Role to handle permissions
-    const { data: profile } = await supabase.from('profiles').select('rol').eq('id', user.id).maybeSingle();
+    const { data: profile } = await supabase.from('profiles').select('rol, cliente_id').eq('id', user.id).maybeSingle();
     const userRole = profile?.rol ?? 'usuario';
+    const userClienteId = (profile as any)?.cliente_id ?? null;
     const isAgent = userRole.toUpperCase() === 'TECNICO';
     const isAdmin = userRole.toUpperCase() === 'ADMIN' || userRole.toUpperCase() === 'COORDINADOR';
     const isSystemelStaff = ['admin', 'tecnico', 'coordinador', 'admin_bodega'].includes(userRole);
@@ -31,7 +32,7 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
         .from('tickets')
         .select(`
             *,
-            profiles:creado_por (full_name),
+            profiles:creado_por (full_name, cliente_id),
             agente:agente_asignado_id (full_name),
             restaurantes (*),
             tipo_servicio:ticket_tipos_servicio (nombre),
@@ -81,8 +82,13 @@ export default async function TicketDetailPage({ params }: { params: Promise<{ i
     }
 
     // Strict Security Check for Solicitante
-    if (!isAgent && !isAdmin && ticket.creado_por !== user.id) {
-        // A requester is trying to view a ticket they didn't create
+    const ticketCreadorClienteId = (ticket.profiles as any)?.cliente_id ?? null;
+    const mismaEmpresa = userClienteId !== null
+        && ticketCreadorClienteId !== null
+        && userClienteId === ticketCreadorClienteId;
+
+    if (!isAgent && !isAdmin && ticket.creado_por !== user.id && !mismaEmpresa) {
+        // A requester is trying to view a ticket they didn't create and is not from the same company
         redirect('/dashboard/usuario');
     }
 

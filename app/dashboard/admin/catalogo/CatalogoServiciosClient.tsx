@@ -684,7 +684,7 @@ export function CatalogoServiciosClient({
                     {/* ── NIVEL 1 — Tipos de Servicio ── */}
                     <div className={`flex flex-col ${mobileStep !== 0 ? 'hidden sm:flex' : 'flex'}`}>
                         <ColumnHeader cfg={LEVELS[0]} count={tipos.length} />
-                        <div className="flex-1 overflow-y-auto py-2">
+                        <div className="flex-1 overflow-x-hidden overflow-y-auto py-2">
                             {tipos.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                                     <div className="p-3 bg-indigo-100 rounded-2xl mb-2"><Layers className="w-5 h-5 text-indigo-500" /></div>
@@ -719,7 +719,7 @@ export function CatalogoServiciosClient({
                         ) : (
                             <>
                                 <ColumnHeader cfg={LEVELS[1]} count={categorias.length} isLoading={loadingCat} />
-                                <div className="flex-1 overflow-y-auto py-2">
+                                <div className="flex-1 overflow-x-hidden overflow-y-auto py-2">
                                     {categorias.length === 0 && !loadingCat ? (
                                         <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                                             <div className="p-3 bg-emerald-100 rounded-2xl mb-2"><Tag className="w-5 h-5 text-emerald-500" /></div>
@@ -756,7 +756,7 @@ export function CatalogoServiciosClient({
                         ) : (
                             <>
                                 <ColumnHeader cfg={LEVELS[2]} count={subcategorias.length} isLoading={loadingSub} />
-                                <div className="flex-1 overflow-y-auto py-2">
+                                <div className="flex-1 overflow-x-hidden overflow-y-auto py-2">
                                     {subcategorias.length === 0 && !loadingSub ? (
                                         <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                                             <div className="p-3 bg-amber-100 rounded-2xl mb-2"><Wrench className="w-5 h-5 text-amber-500" /></div>
@@ -793,7 +793,7 @@ export function CatalogoServiciosClient({
                         ) : (
                             <>
                                 <ColumnHeader cfg={LEVELS[3]} count={acciones.length} isLoading={loadingAcc} />
-                                <div className="flex-1 overflow-y-auto py-2">
+                                <div className="flex-1 overflow-x-hidden overflow-y-auto py-2">
                                     {acciones.length === 0 && !loadingAcc ? (
                                         <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                                             <div className="p-3 bg-slate-100 rounded-2xl mb-2"><Zap className="w-5 h-5 text-slate-500" /></div>

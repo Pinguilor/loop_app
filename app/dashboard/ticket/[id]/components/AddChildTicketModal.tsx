@@ -5,57 +5,107 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Plus, X } from 'lucide-react';
 import { createChildTicketAction } from '../actions';
 import { createClient } from '@/lib/supabase/client';
-import { CatalogoServicio } from '@/types/database.types';
 import { CustomSelect } from '@/app/dashboard/components/CustomSelect';
 
 interface Props {
     ticketPadreId: string;
+    clienteId: string | null;
     onClose: () => void;
 }
 
-export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
+export function AddChildTicketModal({ ticketPadreId, clienteId, onClose }: Props) {
     const router = useRouter();
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Catalog State
-    const [catalogos, setCatalogos] = useState<CatalogoServicio[]>([]);
+    // Catalog state — 4 levels
+    const [tiposServicio, setTiposServicio] = useState<{ id: string; nombre: string }[]>([]);
+    const [categorias, setCategorias] = useState<{ id: string; nombre: string }[]>([]);
+    const [subcategorias, setSubcategorias] = useState<{ id: string; nombre: string }[]>([]);
+    const [acciones, setAcciones] = useState<{ id: string; nombre: string }[]>([]);
     const [isLoadingCatalog, setIsLoadingCatalog] = useState(true);
 
-    const [selectedCategoria, setSelectedCategoria] = useState<string>('');
-    const [selectedSubcategoria, setSelectedSubcategoria] = useState<string>('');
-    const [selectedCatalogoId, setSelectedCatalogoId] = useState<string>('');
+    // Cascading selection state
+    const [selectedTipoServicioId, setSelectedTipoServicioId] = useState('');
+    const [selectedCategoriaId, setSelectedCategoriaId] = useState('');
+    const [selectedSubcategoriaId, setSelectedSubcategoriaId] = useState('');
+    const [selectedAccionId, setSelectedAccionId] = useState('');
+
     const [prioridad, setPrioridad] = useState('media');
 
-    // Fetch master data on mount
+    // Level 1 — fetch Tipos de Servicio filtered by cliente_id
     useEffect(() => {
-        async function fetchCatalog() {
+        async function fetchTipos() {
             setIsLoadingCatalog(true);
             const supabase = createClient();
-            try {
-                const { data } = await supabase.from('catalogo_servicios').select('*').eq('activo', true);
-                if (data) setCatalogos(data);
-            } finally {
-                setIsLoadingCatalog(false);
-            }
-        }
-        fetchCatalog();
-    }, []);
+            let query = supabase
+                .from('ticket_tipos_servicio')
+                .select('id, nombre')
+                .eq('activo', true)
+                .order('nombre');
 
-    // Derived State for Cascading Drops
-    const categoriasUnicas = Array.from(new Set(catalogos.map(c => c.categoria))).sort();
-    const subcategoriasFiltradas = selectedCategoria
-        ? Array.from(new Set(catalogos.filter(c => c.categoria === selectedCategoria).map(c => c.subcategoria))).sort()
-        : [];
-    const elementosFiltrados = (selectedCategoria && selectedSubcategoria)
-        ? catalogos.filter(c => c.categoria === selectedCategoria && c.subcategoria === selectedSubcategoria).sort((a, b) => a.elemento.localeCompare(b.elemento))
-        : [];
+            if (clienteId) query = query.eq('cliente_id', clienteId);
+
+            const { data } = await query;
+            if (data) setTiposServicio(data);
+            setIsLoadingCatalog(false);
+        }
+        fetchTipos();
+    }, [clienteId]);
+
+    // Level 2 — fetch Categorías on tipo change
+    useEffect(() => {
+        if (!selectedTipoServicioId) { setCategorias([]); return; }
+        async function fetchCategorias() {
+            const supabase = createClient();
+            const { data } = await supabase
+                .from('ticket_categorias')
+                .select('id, nombre')
+                .eq('tipo_servicio_id', selectedTipoServicioId)
+                .eq('activo', true)
+                .order('nombre');
+            if (data) setCategorias(data);
+        }
+        fetchCategorias();
+    }, [selectedTipoServicioId]);
+
+    // Level 3 — fetch Subcategorías on categoría change
+    useEffect(() => {
+        if (!selectedCategoriaId) { setSubcategorias([]); return; }
+        async function fetchSubcategorias() {
+            const supabase = createClient();
+            const { data } = await supabase
+                .from('ticket_subcategorias')
+                .select('id, nombre')
+                .eq('categoria_id', selectedCategoriaId)
+                .eq('activo', true)
+                .order('nombre');
+            if (data) setSubcategorias(data);
+        }
+        fetchSubcategorias();
+    }, [selectedCategoriaId]);
+
+    // Level 4 — fetch Acciones on subcategoría change
+    useEffect(() => {
+        if (!selectedSubcategoriaId) { setAcciones([]); return; }
+        async function fetchAcciones() {
+            const supabase = createClient();
+            const { data } = await supabase
+                .from('ticket_acciones')
+                .select('id, nombre')
+                .eq('subcategoria_id', selectedSubcategoriaId)
+                .eq('activo', true)
+                .order('nombre');
+            if (data) setAcciones(data);
+        }
+        fetchAcciones();
+    }, [selectedSubcategoriaId]);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        
-        if (!selectedCatalogoId) {
-            setError('Por favor selecciona una tipología completa (Elemento incluido).');
+
+        if (!selectedTipoServicioId || !selectedCategoriaId || !selectedSubcategoriaId || !selectedAccionId) {
+            setError('Por favor completa la clasificación completa de 4 niveles.');
             return;
         }
 
@@ -64,7 +114,10 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
 
         const formData = new FormData(e.currentTarget);
         formData.append('ticketPadreId', ticketPadreId);
-        formData.append('catalogo_servicio_id', selectedCatalogoId);
+        formData.append('tipo_servicio_id', selectedTipoServicioId);
+        formData.append('categoria_id', selectedCategoriaId);
+        formData.append('subcategoria_id', selectedSubcategoriaId);
+        formData.append('accion_id', selectedAccionId);
         formData.append('prioridad', prioridad);
 
         try {
@@ -73,11 +126,10 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
             if (result.error) {
                 setError(result.error);
             } else if (result.newTicketId) {
-                // Navegar al nuevo ticket hijo o recargar la página actual
                 router.push(`/dashboard/ticket/${result.newTicketId}`);
                 onClose();
             }
-        } catch (err) {
+        } catch {
             setError('Ocurrió un error inesperado al crear el ticket adicional.');
         } finally {
             setIsSubmitting(false);
@@ -87,7 +139,7 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
     return (
         <div className="fixed inset-0 z-50 flex items-start pt-24 pb-8 justify-center px-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-3xl overflow-y-auto max-h-[calc(100vh-8rem)] flex flex-col border border-slate-200 animate-in zoom-in-95 duration-200 custom-scrollbar">
-                
+
                 {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
                     <div className="flex items-center gap-2">
@@ -96,7 +148,7 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
                         </div>
                         <h2 className="text-lg font-bold text-slate-800">Sumar Ticket Adicional</h2>
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
                         title="Cerrar modal"
                         className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
@@ -107,7 +159,7 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
 
                 {/* Body */}
                 <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-5">
-                    
+
                     {error && (
                         <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl">
                             {error}
@@ -118,53 +170,78 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
                         El nuevo ticket heredará automáticamente el <span className="font-bold text-slate-700">restaurante</span> y el <span className="font-bold text-slate-700">cliente</span> del ticket actual, pero requiere tipificación.
                     </div>
 
-                    {/* Fila: Categoría y Subcategoría */}
+                    {/* Fila 1: Tipo de Servicio + Categoría */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Categoría</label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Tipo de Servicio</label>
                             <CustomSelect
-                                id="categoria"
-                                value={selectedCategoria}
+                                id="tipo_servicio"
+                                value={selectedTipoServicioId}
                                 onChange={(val) => {
-                                    setSelectedCategoria(val);
-                                    setSelectedSubcategoria('');
-                                    setSelectedCatalogoId('');
+                                    setSelectedTipoServicioId(val);
+                                    setSelectedCategoriaId('');
+                                    setSelectedSubcategoriaId('');
+                                    setSelectedAccionId('');
+                                    setCategorias([]);
+                                    setSubcategorias([]);
+                                    setAcciones([]);
                                 }}
-                                options={categoriasUnicas.map(cat => ({ value: cat, label: cat }))}
-                                placeholder="Selecciona Categoría..."
+                                options={tiposServicio.map(t => ({ value: t.id, label: t.nombre }))}
+                                placeholder="Selecciona Tipo de Servicio..."
                                 disabled={isLoadingCatalog}
                                 required
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Subcategoría</label>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Categoría Principal</label>
                             <CustomSelect
-                                id="subcategoria"
-                                value={selectedSubcategoria}
+                                id="categoria"
+                                value={selectedCategoriaId}
                                 onChange={(val) => {
-                                    setSelectedSubcategoria(val);
-                                    setSelectedCatalogoId('');
+                                    setSelectedCategoriaId(val);
+                                    setSelectedSubcategoriaId('');
+                                    setSelectedAccionId('');
+                                    setSubcategorias([]);
+                                    setAcciones([]);
                                 }}
-                                options={subcategoriasFiltradas.map(sub => ({ value: sub, label: sub }))}
-                                placeholder="Selecciona Subcategoría..."
-                                disabled={!selectedCategoria || isLoadingCatalog}
+                                options={categorias.map(c => ({ value: c.id, label: c.nombre }))}
+                                placeholder="Selecciona Categoría..."
+                                disabled={!selectedTipoServicioId || isLoadingCatalog}
                                 required
                             />
                         </div>
                     </div>
 
-                    {/* Fila: Elemento (Catálogo ID) */}
-                    <div>
-                        <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Problema Específico (Elemento)</label>
-                        <CustomSelect
-                            id="elemento"
-                            value={selectedCatalogoId}
-                            onChange={setSelectedCatalogoId}
-                            options={elementosFiltrados.map(item => ({ value: item.id, label: item.elemento }))}
-                            placeholder="Selecciona Elemento..."
-                            disabled={!selectedSubcategoria || isLoadingCatalog}
-                            required
-                        />
+                    {/* Fila 2: Equipo / Subcategoría + Acción / Falla */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Equipo / Subcategoría</label>
+                            <CustomSelect
+                                id="subcategoria"
+                                value={selectedSubcategoriaId}
+                                onChange={(val) => {
+                                    setSelectedSubcategoriaId(val);
+                                    setSelectedAccionId('');
+                                    setAcciones([]);
+                                }}
+                                options={subcategorias.map(s => ({ value: s.id, label: s.nombre }))}
+                                placeholder="Selecciona Equipo..."
+                                disabled={!selectedCategoriaId || isLoadingCatalog}
+                                required
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Acción / Falla</label>
+                            <CustomSelect
+                                id="accion"
+                                value={selectedAccionId}
+                                onChange={setSelectedAccionId}
+                                options={acciones.map(a => ({ value: a.id, label: a.nombre }))}
+                                placeholder="Selecciona Acción..."
+                                disabled={!selectedSubcategoriaId || isLoadingCatalog}
+                                required
+                            />
+                        </div>
                     </div>
 
                     <div>
@@ -192,7 +269,7 @@ export function AddChildTicketModal({ ticketPadreId, onClose }: Props) {
                     </div>
 
                     <div>
-                        <label htmlFor="prioridad" className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Prioridad</label>
+                        <label className="block text-sm font-bold text-slate-700 mb-1.5 uppercase tracking-wider text-[11px]">Prioridad</label>
                         <CustomSelect
                             id="prioridad"
                             name="prioridad"

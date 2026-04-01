@@ -196,19 +196,19 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                     )}
 
                     <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-5">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
                             <div className="h-12 w-12 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0 shadow-sm border border-indigo-200">
                                 {ticket.profiles?.full_name?.charAt(0).toUpperCase() || <UserIcon className="w-6 h-6" />}
                             </div>
                             <div className="min-w-0 flex-1">
-                                <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-tight line-clamp-2 md:truncate break-words">{ticket.titulo}</h2>
+                                <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-tight break-words whitespace-normal">{ticket.titulo}</h2>
                                 <p className="text-[11px] sm:text-sm text-slate-500 font-medium mt-0.5">
                                     Por <span className="text-slate-800 font-bold">{ticket.profiles?.full_name}</span> • {new Date(ticket.fecha_creacion).toLocaleDateString()}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                        <div className="flex flex-col sm:flex-row gap-2 shrink-0 w-full sm:w-auto">
                             {(() => {
                                 const isCancellableState = ticket.estado !== 'anulado' && ticket.estado !== 'cerrado' && ticket.estado !== 'resuelto';
                                 const hoursSinceCreation = (new Date().getTime() - new Date(ticket.fecha_creacion).getTime()) / (1000 * 60 * 60);
@@ -323,8 +323,8 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                         ) : (
                             <div className="bg-white rounded-2xl border border-indigo-100/70 shadow-sm flex flex-col transition-colors hover:border-indigo-200">
                                 <div className="py-4">
-                                    <div className="overflow-y-auto max-h-[170px] custom-scrollbar px-5 relative group">
-                                        <div dangerouslySetInnerHTML={{ __html: ticket.descripcion }} className="pr-2 pb-2 text-[13px] font-medium text-slate-700 prose prose-sm max-w-none leading-relaxed" />
+                                    <div className="overflow-x-hidden overflow-y-auto max-h-[170px] custom-scrollbar px-5 relative group">
+                                        <div dangerouslySetInnerHTML={{ __html: ticket.descripcion }} className="pr-2 pb-2 text-[13px] font-medium text-slate-700 prose prose-sm max-w-none leading-relaxed break-words" />
 
                                         {ticket.ticket_padre_id && ticket.agente_asignado_id === currentUserId && !isEditingDesc && !['cerrado', 'resuelto', 'anulado'].includes(ticket.estado) && (
                                             <button

@@ -6,11 +6,12 @@ import {
     Pencil, Plus, Loader2, AlertTriangle, CheckCircle2, X,
     Hash, FileText, Globe, ToggleRight, ToggleLeft,
     UserPlus, Shield, Trash2, RefreshCw, MapPin, Mail, Wifi, Search,
+    KeyRound, Copy, Check,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { actualizarClienteAction, toggleActivoClienteAction } from '../actions';
-import { crearUsuarioAction, actualizarUsuarioAction, eliminarUsuarioAction } from '../../usuarios/actions';
+import { crearUsuarioAction, actualizarUsuarioAction, eliminarUsuarioAction, blanquearPasswordAction } from '../../usuarios/actions';
 import { crearRestauranteAction, actualizarRestauranteAction, eliminarRestauranteAction } from './restaurantesActions';
 import { CatalogoServiciosClient } from '@/app/dashboard/admin/catalogo/CatalogoServiciosClient';
 
@@ -215,19 +216,19 @@ function ModalCrearUsuarioHub({
     clienteId: string; onClose: () => void; onSuccess: () => void;
 }) {
     const [isPending, startTransition] = useTransition();
-    const [error, setError]           = useState('');
-    const [showPass, setShowPass]     = useState(false);
+    const [error, setError]            = useState('');
+    const [successMsg, setSuccessMsg]  = useState('');
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setError('');
         const fd = new FormData(e.currentTarget);
-        fd.set('rol', 'usuario');          // Siempre rol usuario desde aquí
-        fd.set('cliente_id', clienteId);   // Auto-asignado al cliente del hub
+        fd.set('rol', 'usuario');
+        fd.set('cliente_id', clienteId);
         startTransition(async () => {
             const res = await crearUsuarioAction(fd);
             if (res.error) setError(res.error);
-            else { onSuccess(); onClose(); }
+            else { onSuccess(); setSuccessMsg(res.defaultPassword ?? 'SystelPassword'); }
         });
     };
 
@@ -246,53 +247,250 @@ function ModalCrearUsuarioHub({
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                    <div>
-                        <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">Nombre Completo *</label>
-                        <input name="nombre" type="text" required autoFocus placeholder="Ej: Juan Pérez"
-                            className="w-full border-2 border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
+                {successMsg ? (
+                    <div className="p-6 space-y-5">
+                        <div className="flex flex-col items-center text-center gap-3">
+                            <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                                <CheckCircle2 className="w-8 h-8 text-emerald-600" />
+                            </div>
+                            <div>
+                                <p className="text-base font-black text-slate-900">¡Usuario creado exitosamente!</p>
+                                <p className="text-sm text-slate-500 mt-1">Se ha asignado la contraseña por defecto.</p>
+                            </div>
+                        </div>
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3.5 flex items-start gap-3">
+                            <KeyRound className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-xs font-black text-amber-800 uppercase tracking-widest mb-1">Contraseña por defecto</p>
+                                <p className="text-lg font-black text-amber-900 font-mono tracking-wide">{successMsg}</p>
+                                <p className="text-xs text-amber-700 mt-1.5">El usuario deberá cambiarla en su primer inicio de sesión.</p>
+                            </div>
+                        </div>
+                        <button onClick={onClose}
+                            className="w-full px-4 py-2.5 bg-indigo-600 text-white text-sm font-black rounded-xl hover:bg-indigo-700 transition-all shadow-md">
+                            Entendido, cerrar
+                        </button>
                     </div>
-                    <div>
-                        <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">Correo Electrónico *</label>
-                        <input name="email" type="email" required placeholder="juan@empresa.cl"
-                            className="w-full border-2 border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-                    </div>
-                    <div>
-                        <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">Contraseña *</label>
-                        <div className="relative">
-                            <input name="password" type={showPass ? 'text' : 'password'} required minLength={6}
-                                placeholder="Mínimo 6 caracteres"
-                                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2.5 pr-10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
-                            <button type="button" onClick={() => setShowPass(v => !v)} title={showPass ? 'Ocultar' : 'Mostrar'}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-black">
-                                {showPass ? 'Ocultar' : 'Ver'}
+                ) : (
+                    <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                        <div>
+                            <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">Nombre Completo *</label>
+                            <input name="nombre" type="text" required autoFocus placeholder="Ej: Juan Pérez"
+                                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">Correo Electrónico *</label>
+                            <input name="email" type="email" required placeholder="juan@empresa.cl"
+                                className="w-full border-2 border-slate-200 rounded-xl px-3 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all" />
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 text-amber-700 text-xs font-medium">
+                            <KeyRound className="w-3.5 h-3.5 shrink-0" />
+                            Se asignará la contraseña por defecto: <span className="font-black ml-1">SystelPassword</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2.5 text-indigo-700 text-xs font-medium">
+                            <Shield className="w-3.5 h-3.5 shrink-0" />
+                            El usuario tendrá acceso exclusivo al catálogo y tickets de este cliente.
+                        </div>
+
+                        {error && (
+                            <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-red-600 text-sm font-medium">
+                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{error}
+                            </div>
+                        )}
+
+                        <div className="flex gap-3 pt-2">
+                            <button type="button" onClick={onClose} disabled={isPending}
+                                className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">
+                                Cancelar
+                            </button>
+                            <button type="submit" disabled={isPending}
+                                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-black rounded-xl hover:bg-violet-700 transition-all shadow-md active:scale-95 disabled:opacity-40">
+                                {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
+                                {isPending ? 'Creando…' : 'Crear Usuario'}
                             </button>
                         </div>
-                    </div>
+                    </form>
+                )}
+            </div>
+        </ModalBackdrop>
+    );
+}
 
-                    <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2.5 text-indigo-700 text-xs font-medium">
-                        <Shield className="w-3.5 h-3.5 shrink-0" />
-                        El usuario tendrá acceso exclusivo al catálogo y tickets de este cliente.
-                    </div>
+// ── Modal: Blanquear Contraseña (hub clientes) ─────────────────
+function ModalBlanquearHub({ usuario, onClose }: { usuario: UsuarioCliente; onClose: () => void }) {
+    const [isPending, startTransition] = useTransition();
+    const [error, setError]            = useState('');
+    const [tempPassword, setTempPassword] = useState('');
+    const [copied, setCopied]          = useState(false);
 
+    const handleBlanquear = () => {
+        setError('');
+        startTransition(async () => {
+            const res = await blanquearPasswordAction(usuario.id);
+            if (res.error) { setError(res.error); return; }
+            setTempPassword(res.tempPassword ?? '');
+        });
+    };
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(tempPassword);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <ModalBackdrop onClose={() => !isPending && onClose()}>
+            <div className="relative bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden z-10">
+                <div className="bg-amber-500 px-6 py-4 flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl"><KeyRound className="w-5 h-5 text-white" /></div>
+                    <div>
+                        <h3 className="text-base font-black text-white">Blanquear Contraseña</h3>
+                        <p className="text-xs text-amber-100 font-medium truncate max-w-[220px]">{usuario.email}</p>
+                    </div>
+                    <button onClick={onClose} disabled={isPending} title="Cerrar"
+                        className="ml-auto p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    {tempPassword ? (
+                        <>
+                            <div className="flex flex-col items-center text-center gap-2">
+                                <div className="w-12 h-12 rounded-2xl bg-emerald-100 flex items-center justify-center">
+                                    <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+                                </div>
+                                <p className="text-base font-black text-slate-900">Contraseña restablecida</p>
+                                <p className="text-sm text-slate-500">
+                                    Entrega esta clave temporal a{' '}
+                                    <span className="font-bold text-slate-700">{usuario.full_name || 'el usuario'}</span>.
+                                    Deberá cambiarla en su próximo ingreso.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 bg-slate-900 rounded-xl px-4 py-3">
+                                <span className="flex-1 font-mono text-lg font-black text-white tracking-widest select-all">
+                                    {tempPassword}
+                                </span>
+                                <button type="button" onClick={handleCopy} title="Copiar al portapapeles"
+                                    className="p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0">
+                                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                                </button>
+                            </div>
+                            {copied && (
+                                <p className="text-center text-xs text-emerald-600 font-bold animate-in fade-in duration-200">
+                                    ¡Copiado al portapapeles!
+                                </p>
+                            )}
+                            <button onClick={onClose}
+                                className="w-full px-4 py-2.5 bg-slate-800 text-white text-sm font-black rounded-xl hover:bg-slate-700 transition-all shadow-md">
+                                Listo, cerrar
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                                <p className="text-sm font-medium text-amber-900">
+                                    Se generará una contraseña temporal aleatoria para{' '}
+                                    <span className="font-black">{usuario.full_name || 'este usuario'}</span>.
+                                    El usuario deberá cambiarla en su próximo inicio de sesión.
+                                </p>
+                            </div>
+                            {error && (
+                                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-red-600 text-sm font-medium">
+                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{error}
+                                </div>
+                            )}
+                            <div className="flex gap-3">
+                                <button type="button" onClick={onClose} disabled={isPending}
+                                    className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">
+                                    Cancelar
+                                </button>
+                                <button onClick={handleBlanquear} disabled={isPending}
+                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 text-white text-sm font-black rounded-xl hover:bg-amber-600 transition-all shadow-md active:scale-95 disabled:opacity-40">
+                                    {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <KeyRound className="w-4 h-4" />}
+                                    {isPending ? 'Generando…' : 'Generar contraseña'}
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        </ModalBackdrop>
+    );
+}
+
+// ── Modal: Eliminar Usuario (hub clientes) ─────────────────────
+function ModalEliminarUsuarioHub({ usuario, onClose, onSuccess }: {
+    usuario: UsuarioCliente; onClose: () => void; onSuccess: () => void;
+}) {
+    const [isPending, startTransition] = useTransition();
+    const [error, setError]            = useState('');
+    const [confirm, setConfirm]        = useState('');
+    const CONFIRM_WORD = 'ELIMINAR';
+    const canDelete = confirm === CONFIRM_WORD;
+
+    const handleDelete = () => {
+        setError('');
+        startTransition(async () => {
+            const res = await eliminarUsuarioAction(usuario.id);
+            if (res.error) setError(res.error);
+            else { onSuccess(); onClose(); }
+        });
+    };
+
+    return (
+        <ModalBackdrop onClose={() => !isPending && onClose()}>
+            <div className="relative bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden z-10 border-2 border-red-100">
+                <div className="bg-red-600 px-6 py-4 flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl"><Trash2 className="w-5 h-5 text-white" /></div>
+                    <div>
+                        <h3 className="text-base font-black text-white">Eliminar Usuario</h3>
+                        <p className="text-xs text-red-200 font-medium">Esta acción es irreversible</p>
+                    </div>
+                    <button onClick={onClose} disabled={isPending} title="Cerrar"
+                        className="ml-auto p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-40">
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                        <p className="text-sm font-medium text-red-800">
+                            Vas a eliminar la cuenta de{' '}
+                            <span className="font-black">{usuario.full_name || 'este usuario'}</span>{' '}
+                            ({usuario.email}). Se borrará su acceso permanentemente.
+                        </p>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">
+                            Escribe <span className="text-red-600">{CONFIRM_WORD}</span> para confirmar
+                        </label>
+                        <input
+                            type="text" value={confirm}
+                            onChange={e => setConfirm(e.target.value.toUpperCase())}
+                            placeholder={CONFIRM_WORD}
+                            className="w-full border-2 border-red-200 rounded-xl px-3 py-2.5 text-sm font-black text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all tracking-widest"
+                        />
+                    </div>
                     {error && (
                         <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5 text-red-600 text-sm font-medium">
                             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />{error}
                         </div>
                     )}
-
-                    <div className="flex gap-3 pt-2">
+                    <div className="flex gap-3 pt-1">
                         <button type="button" onClick={onClose} disabled={isPending}
                             className="flex-1 px-4 py-2.5 text-sm font-bold text-slate-600 border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50">
                             Cancelar
                         </button>
-                        <button type="submit" disabled={isPending}
-                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-violet-600 text-white text-sm font-black rounded-xl hover:bg-violet-700 transition-all shadow-md active:scale-95 disabled:opacity-40">
-                            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-                            {isPending ? 'Creando…' : 'Crear Usuario'}
+                        <button onClick={handleDelete} disabled={isPending || !canDelete}
+                            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 text-white text-sm font-black rounded-xl hover:bg-red-700 transition-all shadow-md active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+                            {isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            {isPending ? 'Eliminando…' : 'Eliminar'}
                         </button>
                     </div>
-                </form>
+                </div>
             </div>
         </ModalBackdrop>
     );
@@ -304,11 +502,11 @@ function TabUsuarios({
 }: {
     usuarios: UsuarioCliente[]; clienteId: string;
 }) {
-    const router                             = useRouter();
-    const [modalCrear, setModalCrear]        = useState(false);
-    const [togglingDelete, startDelete]      = useTransition();
-    const [deletingId, setDeletingId]        = useState<string | null>(null);
-    const [search, setSearch]                = useState('');
+    const router                                  = useRouter();
+    const [modalCrear, setModalCrear]             = useState(false);
+    const [modalBlanquear, setModalBlanquear]     = useState<UsuarioCliente | null>(null);
+    const [modalEliminar, setModalEliminar]       = useState<UsuarioCliente | null>(null);
+    const [search, setSearch]                     = useState('');
 
     const handleRefresh = useCallback(() => router.refresh(), [router]);
 
@@ -317,16 +515,6 @@ function TabUsuarios({
         (u.full_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
         (u.email ?? '').toLowerCase().includes(search.toLowerCase())
     );
-
-    const handleDelete = (userId: string) => {
-        if (!confirm('¿Eliminar este usuario? Esta acción no se puede deshacer.')) return;
-        setDeletingId(userId);
-        startDelete(async () => {
-            await eliminarUsuarioAction(userId);
-            setDeletingId(null);
-            router.refresh();
-        });
-    };
 
     return (
         <div className="space-y-4">
@@ -383,7 +571,6 @@ function TabUsuarios({
                                 </tr>
                             ) : filtrados.map(u => {
                                 const initials = (u.full_name ?? u.email ?? '?').charAt(0).toUpperCase();
-                                const isDeleting = deletingId === u.id;
                                 return (
                                     <tr key={u.id} className="hover:bg-slate-50/70 transition-colors">
                                         <td className="px-6 py-3.5">
@@ -404,14 +591,22 @@ function TabUsuarios({
                                             <span className="text-xs font-medium text-slate-500">{formatDate(u.created_at)}</span>
                                         </td>
                                         <td className="px-6 py-3.5 text-right">
-                                            <button
-                                                onClick={() => handleDelete(u.id)}
-                                                disabled={isDeleting || !!togglingDelete}
-                                                title="Eliminar usuario"
-                                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all disabled:opacity-40"
-                                            >
-                                                {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                                            </button>
+                                            <div className="flex items-center justify-end gap-1">
+                                                <button
+                                                    onClick={() => setModalBlanquear(u)}
+                                                    title="Blanquear contraseña"
+                                                    className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+                                                >
+                                                    <KeyRound className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    onClick={() => setModalEliminar(u)}
+                                                    title="Eliminar usuario"
+                                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
@@ -432,6 +627,19 @@ function TabUsuarios({
                 <ModalCrearUsuarioHub
                     clienteId={clienteId}
                     onClose={() => setModalCrear(false)}
+                    onSuccess={handleRefresh}
+                />
+            )}
+            {modalBlanquear && (
+                <ModalBlanquearHub
+                    usuario={modalBlanquear}
+                    onClose={() => setModalBlanquear(null)}
+                />
+            )}
+            {modalEliminar && (
+                <ModalEliminarUsuarioHub
+                    usuario={modalEliminar}
+                    onClose={() => setModalEliminar(null)}
                     onSuccess={handleRefresh}
                 />
             )}

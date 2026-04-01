@@ -589,6 +589,7 @@ export default function TicketSidebar({ ticket, isAgent, isAdmin, userRole = 'us
             {showChildTicketModal && isAgent && (
                 <AddChildTicketModal
                     ticketPadreId={ticket.id}
+                    clienteId={(ticket.profiles as any)?.cliente_id ?? null}
                     onClose={() => setShowChildTicketModal(false)}
                 />
             )}

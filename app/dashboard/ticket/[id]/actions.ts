@@ -1124,16 +1124,19 @@ export async function createChildTicketAction(formData: FormData) {
     const titulo = formData.get('titulo') as string;
     const descripcion = formData.get('descripcion') as string;
     const prioridad = formData.get('prioridad') as 'baja' | 'media' | 'alta' | 'crítica';
-    const catalogo_servicio_id = formData.get('catalogo_servicio_id') as string;
+    const tipo_servicio_id = formData.get('tipo_servicio_id') as string;
+    const categoria_id = formData.get('categoria_id') as string;
+    const subcategoria_id = formData.get('subcategoria_id') as string;
+    const accion_id = formData.get('accion_id') as string;
 
-    if (!ticketPadreId || !titulo || !descripcion || !prioridad || !catalogo_servicio_id) {
-        return { error: 'Por favor completa todos los campos requeridos.' };
+    if (!ticketPadreId || !titulo || !descripcion || !prioridad || !tipo_servicio_id || !categoria_id || !subcategoria_id || !accion_id) {
+        return { error: 'Por favor completa todos los campos requeridos, incluyendo la clasificación completa de 4 niveles.' };
     }
 
     // Get parent ticket info
     const { data: parentTicket, error: parentError } = await supabase
         .from('tickets')
-        .select('restaurante_id, catalogo_servicio_id, zona_id, creado_por, numero_ticket')
+        .select('restaurante_id, zona_id, creado_por, numero_ticket')
         .eq('id', ticketPadreId)
         .single();
 
@@ -1152,7 +1155,10 @@ export async function createChildTicketAction(formData: FormData) {
             descripcion: descripcion,
             prioridad: prioridad,
             restaurante_id: parentTicket.restaurante_id,
-            catalogo_servicio_id: catalogo_servicio_id,
+            tipo_servicio_id,
+            categoria_id,
+            subcategoria_id,
+            accion_id,
             zona_id: parentTicket.zona_id,
             estado: 'abierto',
             agente_asignado_id: user.id,

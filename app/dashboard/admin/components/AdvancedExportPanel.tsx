@@ -283,7 +283,7 @@ export function AdvancedExportPanel({ onClose }: Props) {
     const toggleAll = (value: boolean) =>
         setColumnas(Object.fromEntries(
             Object.keys(COLUMNAS_DEFAULT).map(k => [k, value])
-        ) as ColumnasVisibles);
+        ) as unknown as ColumnasVisibles);
 
     const allOn  = Object.values(columnas).every(Boolean);
     const allOff = Object.values(columnas).every(v => !v);

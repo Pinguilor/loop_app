@@ -36,6 +36,6 @@ export async function generateActaCierrePDF(input: ActaPDFInput): Promise<Buffer
         logoUrl,
     });
 
-    const arrayBuffer = await renderToBuffer(element as React.ReactElement);
+    const arrayBuffer = await renderToBuffer(element as any);
     return Buffer.from(arrayBuffer);
 }

@@ -17,22 +17,13 @@ export default function LoginPage() {
 
                     {/* RECUADRO 1: Logo */}
                     <div className="flex-1 flex items-center justify-center relative z-10 w-full py-4 md:py-0">
-                        <div className="flex items-center justify-center gap-4 md:gap-5 mb-6 md:mb-8 transition-transform duration-500 hover:scale-105">
+                        <div className="flex items-center justify-center mb-6 md:mb-8 transition-transform duration-500 hover:scale-105">
                             <Image
                                 src="/systeltlda.png"
                                 alt="Logo Systel"
                                 width={180}
                                 height={60}
                                 className="h-10 md:h-14 w-auto object-contain drop-shadow-md"
-                                priority
-                            />
-                            <div className="w-[2px] h-10 md:h-14 bg-slate-300/80 rounded-full"></div>
-                            <Image
-                                src="/looplogo-login.png"
-                                alt="Logo Loop"
-                                width={150}
-                                height={50}
-                                className="h-10 md:h-[3.25rem] w-auto object-contain drop-shadow-md"
                                 priority
                             />
                         </div>
@@ -52,7 +43,7 @@ export default function LoginPage() {
             </div>
 
             <div className="absolute bottom-4 text-xs text-white/50 font-medium z-10 w-full text-center">
-                &copy; {new Date().getFullYear()} Creado por Loop - desarrollo de software y soluciones a medida.
+                &copy; {new Date().getFullYear()} Creado por Loopdeskapp - Desarrolo de Software y soluciones a medida
             </div>
         </div>
     )

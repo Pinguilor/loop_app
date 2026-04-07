@@ -28,7 +28,7 @@ export default async function tecnicoDashboard() {
         .select(`
             *,
             profiles:creado_por(full_name, clientes:cliente_id(nombre_fantasia, razon_social)),
-            restaurantes(nombre_restaurante),
+            restaurantes(nombre_restaurante, sigla),
             catalogo_servicios(categoria, subcategoria, elemento),
             padre:ticket_padre_id(numero_ticket)
         `)
@@ -41,6 +41,14 @@ export default async function tecnicoDashboard() {
 
     return (
         <div className="max-w-7xl mx-auto py-4 md:py-8 px-0 sm:px-6 lg:px-8 space-y-4 md:space-y-8 min-h-screen">
+            {/* Greeting */}
+            <div className="px-4 sm:px-0">
+                <p className="text-sm font-semibold text-slate-400 tracking-wide uppercase">Panel de Control</p>
+                <h1 className="text-3xl font-extrabold text-slate-950 tracking-tight">
+                    Hola, {profile?.full_name?.split(' ')[0] ?? 'Técnico'} 👋
+                </h1>
+            </div>
+
             {/* Agent Analytics Dashboard */}
             <div className="hidden md:block px-4 sm:px-0">
                 <AgentAnalytics tickets={tickets || []} />

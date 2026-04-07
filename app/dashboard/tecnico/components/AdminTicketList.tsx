@@ -46,8 +46,9 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                 const matchDesc = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
                 const matchName = (ticket.profiles?.full_name || '').toLowerCase().includes(lowerSearch);
                 const matchRestaurante = (ticket.restaurantes?.nombre_restaurante || '').toLowerCase().includes(lowerSearch);
+                const matchSigla = ((ticket.restaurantes as any)?.sigla || '').toLowerCase().includes(lowerSearch);
                 const matchCliente = ((ticket.profiles as any)?.clientes?.nombre_fantasia || '').toLowerCase().includes(lowerSearch);
-                return matchId || matchTitle || matchDesc || matchName || matchRestaurante || matchCliente;
+                return matchId || matchTitle || matchDesc || matchName || matchRestaurante || matchSigla || matchCliente;
             });
         }
 

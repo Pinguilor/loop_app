@@ -26,7 +26,7 @@ export default async function AdminDashboard() {
         .select(`
             *,
             profiles:creado_por(full_name, clientes:cliente_id(nombre_fantasia, razon_social)),
-            restaurantes(nombre_restaurante),
+            restaurantes(nombre_restaurante, sigla),
             catalogo_servicios(categoria, subcategoria, elemento),
             padre:ticket_padre_id(numero_ticket)
         `)

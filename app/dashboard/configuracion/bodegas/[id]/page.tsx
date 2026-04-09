@@ -71,20 +71,40 @@ export default async function BodegaDetallePage({
         g.rows.push(item);
         g.totalUnidades += item.cantidad ?? 0;
     }
-    const grupos = Array.from(groupMap.values());
+    // grupos is built after supplementing with catalog entries below
 
-    // Catalog: distinct models across ALL inventario for the AddEquipo combobox
-    const { data: catalogoRaw } = await db
-        .from('inventario')
-        .select('modelo, familia, es_serializado')
-        .not('modelo', 'is', null)
-        .not('familia', 'is', null);
+    // Catalog for AddEquipo combobox:
+    // Primary source → catalogo_equipos scoped to this bodega (includes newly created entries)
+    // Supplement   → inventario of this bodega (items added before catalog isolation)
+    const [{ data: catalogoEquiposRaw }, { data: catalogoInventarioRaw }] = await Promise.all([
+        db
+            .from('catalogo_equipos')
+            .select('modelo, es_serializado, familias_hardware(nombre)')
+            .eq('bodega_id', id)
+            .not('modelo', 'is', null),
+        db
+            .from('inventario')
+            .select('modelo, familia, es_serializado')
+            .eq('bodega_id', id)
+            .not('modelo', 'is', null)
+            .not('familia', 'is', null),
+    ]);
 
     const catalogoMap = new Map<string, CatalogoItem>();
-    for (const r of catalogoRaw ?? []) {
-        const k = `${r.modelo}|${r.familia}`;
-        if (!catalogoMap.has(k)) {
-            catalogoMap.set(k, {
+    // 1. Catalog entries (source of truth for this bodega)
+    for (const r of (catalogoEquiposRaw ?? []) as any[]) {
+        if (!catalogoMap.has(r.modelo)) {
+            catalogoMap.set(r.modelo, {
+                modelo: r.modelo,
+                familia: (r.familias_hardware as any)?.nombre ?? '',
+                es_serializado: !!r.es_serializado,
+            });
+        }
+    }
+    // 2. Existing inventory of this bodega (backward compatibility)
+    for (const r of catalogoInventarioRaw ?? []) {
+        if (!catalogoMap.has(r.modelo)) {
+            catalogoMap.set(r.modelo, {
                 modelo: r.modelo,
                 familia: r.familia,
                 es_serializado: !!r.es_serializado,
@@ -93,18 +113,20 @@ export default async function BodegaDetallePage({
     }
     const catalogo: CatalogoItem[] = Array.from(catalogoMap.values());
 
-    // Fetch approved families
+    // Fetch families scoped to this bodega only
     const { data: familiasRaw } = await db
         .from('familias_hardware')
         .select('id, nombre')
+        .eq('bodega_id', id)
         .order('nombre', { ascending: true });
 
     const familias: FamiliaHardware[] = familiasRaw ?? [];
 
-    // Fetch catalogo_equipos for the Catálogo Global modal (graceful if table doesn't exist)
+    // Fetch catalogo_equipos scoped to this bodega (graceful if table doesn't exist)
     const { data: modelosRaw } = await db
         .from('catalogo_equipos')
         .select('id, familia_id, modelo, es_serializado')
+        .eq('bodega_id', id)
         .order('modelo', { ascending: true });
 
     const modelosPorFamilia: Record<string, ModeloCatalogo[]> = {};
@@ -113,6 +135,25 @@ export default async function BodegaDetallePage({
         modelosPorFamilia[m.familia_id].push(m);
     }
 
+    // Supplement groupMap with catalog entries that have no physical stock yet (show as 0)
+    const familiaById = new Map(familias.map(f => [f.id, f.nombre]));
+    for (const m of (modelosRaw ?? []) as ModeloCatalogo[]) {
+        const famNombre = familiaById.get(m.familia_id) ?? '—';
+        const key = `${famNombre}|${m.modelo}`;
+        if (!groupMap.has(key)) {
+            groupMap.set(key, {
+                key,
+                familia: famNombre,
+                modelo: m.modelo,
+                es_serializado: !!m.es_serializado,
+                totalUnidades: 0,
+                rows: [],
+                bodegaId: id,
+            });
+        }
+    }
+
+    const grupos = Array.from(groupMap.values());
     const totalUnidades = grupos.reduce((s, g) => s + g.totalUnidades, 0);
 
     return (
@@ -145,7 +186,7 @@ export default async function BodegaDetallePage({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                    <CatalogoGlobalModal familias={familias} modelosPorFamilia={modelosPorFamilia} />
+                    <CatalogoGlobalModal familias={familias} modelosPorFamilia={modelosPorFamilia} bodegaId={id} bodegaNombre={bodega.nombre} />
                     <AddEquipoModal bodegaId={id} catalogo={catalogo} familias={familias} />
                 </div>
             </div>
@@ -178,8 +219,8 @@ export default async function BodegaDetallePage({
                 {grupos.length === 0 ? (
                     <div className="text-center py-16 text-slate-400">
                         <PackageOpen className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                        <p className="font-semibold text-sm">Esta bodega no tiene stock registrado</p>
-                        <p className="text-xs mt-1">Usa "Añadir Equipo / Stock" para comenzar</p>
+                        <p className="font-semibold text-sm">Esta bodega no tiene modelos en su catálogo</p>
+                        <p className="text-xs mt-1">Crea modelos en "Catálogo de Equipos" y luego ingresa stock</p>
                     </div>
                 ) : (
                     <BodegaStockTable grupos={grupos} />

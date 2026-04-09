@@ -43,7 +43,7 @@ export default function LoginPage() {
             </div>
 
             <div className="absolute bottom-4 text-xs text-white/50 font-medium z-10 w-full text-center">
-                &copy; {new Date().getFullYear()} Creado por Loopdeskapp - Desarrolo de Software y soluciones a medida
+                &copy; {new Date().getFullYear()} Creado por Loopdeskapp - Desarrollo de Software y soluciones a medida
             </div>
         </div>
     )

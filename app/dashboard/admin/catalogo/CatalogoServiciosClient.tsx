@@ -492,9 +492,11 @@ export function CatalogoServiciosClient({
 
     // ── Refresh helpers que re-fetch el nivel correcto ──────────
     const refreshTipos = useCallback(async () => {
-        const { data } = await supabase.from('ticket_tipos_servicio').select('id, nombre, activo').order('nombre');
+        let q = supabase.from('ticket_tipos_servicio').select('id, nombre, activo').order('nombre');
+        if (clienteId) q = q.eq('cliente_id', clienteId);
+        const { data } = await q;
         setTipos(data ?? []);
-    }, [supabase]);
+    }, [supabase, clienteId]);
 
     const refreshCategorias = useCallback(async () => {
         if (!selTipo) return;

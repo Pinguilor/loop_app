@@ -416,7 +416,15 @@ export function BodegaStockTable({ grupos }: { grupos: StockGroup[] }) {
                                 )}
                             </td>
                             <td className="px-5 py-4 text-center">
-                                {g.totalUnidades <= 3 ? (
+                                {g.rows.length === 0 ? (
+                                    <span className="text-xs font-bold text-slate-400 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg">
+                                        Sin ingresos
+                                    </span>
+                                ) : g.totalUnidades === 0 ? (
+                                    <span className="text-sm font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg">
+                                        🔴 0 uds
+                                    </span>
+                                ) : g.totalUnidades <= 3 ? (
                                     <span className="text-sm font-black text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-lg">
                                         🔴 {g.totalUnidades} uds
                                     </span>
@@ -432,16 +440,24 @@ export function BodegaStockTable({ grupos }: { grupos: StockGroup[] }) {
                             </td>
                             <td className="px-5 py-4">
                                 <div className="flex items-center justify-end gap-2">
-                                    <button onClick={() => setAjustarGrupo(g)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
-                                        <Wrench className="w-3 h-3" />
-                                        Ajustar
-                                    </button>
-                                    <button onClick={() => setQuitarGrupo(g)}
-                                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors">
-                                        <Trash2 className="w-3 h-3" />
-                                        Quitar
-                                    </button>
+                                    {g.rows.length === 0 ? (
+                                        <span className="text-[11px] text-slate-400 font-medium italic px-3 py-1.5">
+                                            Usa &ldquo;Añadir Equipo&rdquo;
+                                        </span>
+                                    ) : (
+                                        <>
+                                            <button onClick={() => setAjustarGrupo(g)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors">
+                                                <Wrench className="w-3 h-3" />
+                                                Ajustar
+                                            </button>
+                                            <button onClick={() => setQuitarGrupo(g)}
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-200 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors">
+                                                <Trash2 className="w-3 h-3" />
+                                                Quitar
+                                            </button>
+                                        </>
+                                    )}
                                 </div>
                             </td>
                         </tr>

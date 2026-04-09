@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import {
     crearFamiliaAction, editarFamiliaAction, crearModeloCatalogoAction, eliminarFamiliaAction,
+    editarModeloCatalogoAction, eliminarModeloCatalogoAction,
 } from './actions';
 import type { FamiliaHardware } from './AddEquipoModal';
 
@@ -20,6 +21,8 @@ export interface ModeloCatalogo {
 interface Props {
     familias: FamiliaHardware[];
     modelosPorFamilia: Record<string, ModeloCatalogo[]>;
+    bodegaId: string;
+    bodegaNombre: string;
 }
 
 function Alert({ type, msg }: { type: 'error' | 'success'; msg: string }) {
@@ -37,7 +40,7 @@ function Alert({ type, msg }: { type: 'error' | 'success'; msg: string }) {
     );
 }
 
-export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
+export function CatalogoGlobalModal({ familias, modelosPorFamilia, bodegaId, bodegaNombre }: Props) {
     const [open, setOpen] = useState(false);
     const [isPending, startTransition] = useTransition();
     const [alert, setAlert] = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
@@ -56,6 +59,10 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
     const [newModelo, setNewModelo] = useState('');
     const [newModeloSerial, setNewModeloSerial] = useState(false);
 
+    // Modelo inline edit
+    const [editingModeloId, setEditingModeloId] = useState<string | null>(null);
+    const [editModeloNombre, setEditModeloNombre] = useState('');
+
     function resetAll() {
         setSelectedFamilia(null);
         setAlert(null);
@@ -64,6 +71,8 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
         setNewFamilia('');
         setNewModelo('');
         setNewModeloSerial(false);
+        setEditingModeloId(null);
+        setEditModeloNombre('');
     }
 
     // ── Familia actions ──────────────────────────────────────────
@@ -74,7 +83,7 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
         const n = newFamilia.trim();
         if (!n) { setAlert({ type: 'error', msg: 'Escribe un nombre.' }); return; }
         startTransition(async () => {
-            const result = await crearFamiliaAction(n);
+            const result = await crearFamiliaAction(n, bodegaId);
             if (result.error) { setAlert({ type: 'error', msg: result.error }); }
             else { setAlert({ type: 'success', msg: `Familia "${n}" creada.` }); setNewFamilia(''); }
         });
@@ -121,12 +130,46 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
         const m = newModelo.trim();
         if (!m) { setAlert({ type: 'error', msg: 'Escribe un nombre de modelo.' }); return; }
         startTransition(async () => {
-            const result = await crearModeloCatalogoAction(selectedFamilia.id, m, newModeloSerial);
+            const result = await crearModeloCatalogoAction(selectedFamilia.id, m, newModeloSerial, bodegaId);
             if (result.error) { setAlert({ type: 'error', msg: result.error }); }
             else {
                 setAlert({ type: 'success', msg: `Modelo "${m}" creado.` });
                 setNewModelo('');
                 setNewModeloSerial(false);
+            }
+        });
+    }
+
+    // ── Modelo edit/delete ───────────────────────────────────────
+
+    function startEditModelo(m: ModeloCatalogo) {
+        setEditingModeloId(m.id);
+        setEditModeloNombre(m.modelo);
+        setAlert(null);
+    }
+
+    function handleEditModelo(id: string) {
+        setAlert(null);
+        const n = editModeloNombre.trim();
+        if (!n) { setAlert({ type: 'error', msg: 'El nombre no puede estar vacío.' }); return; }
+        startTransition(async () => {
+            const result = await editarModeloCatalogoAction(id, n, bodegaId);
+            if (result.error) { setAlert({ type: 'error', msg: result.error }); }
+            else {
+                setAlert({ type: 'success', msg: 'Modelo actualizado.' });
+                setEditingModeloId(null);
+            }
+        });
+    }
+
+    function handleDeleteModelo(m: ModeloCatalogo) {
+        setAlert(null);
+        startTransition(async () => {
+            const result = await eliminarModeloCatalogoAction(m.id, bodegaId);
+            if (result.error) { setAlert({ type: 'error', msg: result.error }); }
+            else {
+                setAlert({ type: 'success', msg: `Modelo "${m.modelo}" eliminado.` });
+                if (editingModeloId === m.id) setEditingModeloId(null);
             }
         });
     }
@@ -140,7 +183,7 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
                 className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-sm font-bold rounded-xl border border-slate-200 shadow-sm transition-all shrink-0"
             >
                 <BookOpen className="w-4 h-4 text-slate-500" />
-                Catálogo Global
+                Catálogo de Equipos
             </button>
 
             {open && (
@@ -158,7 +201,7 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
                                     <BookOpen className="w-4 h-4 text-slate-600" />
                                 </div>
                                 <div>
-                                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide">Catálogo Global de Equipos</h2>
+                                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-wide">Catálogo de Equipos — {bodegaNombre}</h2>
                                     <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-widest">
                                         {familias.length} familia{familias.length !== 1 ? 's' : ''} · {Object.values(modelosPorFamilia).flat().length} modelo{Object.values(modelosPorFamilia).flat().length !== 1 ? 's' : ''}
                                     </p>
@@ -316,18 +359,63 @@ export function CatalogoGlobalModal({ familias, modelosPorFamilia }: Props) {
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                                                     {modelosActivos.map(m => (
                                                         <div key={m.id}
-                                                            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm transition-all">
-                                                            <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                                                                <Package className="w-4 h-4 text-indigo-600" />
-                                                            </div>
-                                                            <span className="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate">{m.modelo}</span>
-                                                            <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
-                                                                m.es_serializado
-                                                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                                            }`}>
-                                                                {m.es_serializado ? 'Serial' : 'Genérico'}
-                                                            </span>
+                                                            className="group flex items-center gap-3 px-4 py-3 rounded-xl border border-slate-100 bg-white hover:border-slate-200 hover:shadow-sm transition-all">
+                                                            {editingModeloId === m.id ? (
+                                                                <>
+                                                                    <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                                                                        <Package className="w-4 h-4 text-indigo-600" />
+                                                                    </div>
+                                                                    <input
+                                                                        type="text"
+                                                                        value={editModeloNombre}
+                                                                        onChange={e => setEditModeloNombre(e.target.value)}
+                                                                        autoFocus
+                                                                        onKeyDown={e => {
+                                                                            if (e.key === 'Enter') { e.preventDefault(); handleEditModelo(m.id); }
+                                                                            if (e.key === 'Escape') setEditingModeloId(null);
+                                                                        }}
+                                                                        className="flex-1 min-w-0 rounded-lg border border-indigo-300 px-2 py-1 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                                    />
+                                                                    <button
+                                                                        onClick={() => handleEditModelo(m.id)}
+                                                                        disabled={isPending}
+                                                                        className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-100 disabled:opacity-50 shrink-0">
+                                                                        {isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => setEditingModeloId(null)}
+                                                                        className="p-1 rounded-lg text-slate-400 hover:bg-slate-200 shrink-0">
+                                                                        <X className="w-3 h-3" />
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <div className="h-8 w-8 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                                                                        <Package className="w-4 h-4 text-indigo-600" />
+                                                                    </div>
+                                                                    <span className="flex-1 min-w-0 text-sm font-bold text-slate-700 truncate">{m.modelo}</span>
+                                                                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full border shrink-0 ${
+                                                                        m.es_serializado
+                                                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                                                            : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                                                    }`}>
+                                                                        {m.es_serializado ? 'Serial' : 'Genérico'}
+                                                                    </span>
+                                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                                                        <button
+                                                                            onClick={() => startEditModelo(m)}
+                                                                            className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200 transition-colors">
+                                                                            <Pencil className="w-3 h-3" />
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDeleteModelo(m)}
+                                                                            disabled={isPending}
+                                                                            className="p-1 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 transition-colors">
+                                                                            <Trash2 className="w-3 h-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </>
+                                                            )}
                                                         </div>
                                                     ))}
                                                 </div>

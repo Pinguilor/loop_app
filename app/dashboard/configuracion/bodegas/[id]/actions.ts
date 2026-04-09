@@ -186,6 +186,74 @@ export async function quitarGrupoBodegaAction(bodegaId: string, inventarioIds: s
     return { success: true };
 }
 
+// ── Modelos catálogo CRUD extra ───────────────────────────────
+
+export async function editarModeloCatalogoAction(id: string, modelo: string, bodegaId: string) {
+    const user = await requireAdmin();
+    if (!user) return { error: 'No autorizado.' };
+
+    const m = modelo.trim();
+    if (!m) return { error: 'El nombre no puede estar vacío.' };
+
+    const db = createAdminClient();
+    const { error } = await db
+        .from('catalogo_equipos')
+        .update({ modelo: m })
+        .eq('id', id);
+
+    if (error) {
+        if (error.code === '23505') return { error: 'Ya existe ese modelo en esta familia.' };
+        console.error('[editarModeloCatalogoAction]', error.message);
+        return { error: 'No se pudo actualizar el modelo.' };
+    }
+
+    revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);
+    return { success: true };
+}
+
+export async function eliminarModeloCatalogoAction(id: string, bodegaId: string) {
+    const user = await requireAdmin();
+    if (!user) return { error: 'No autorizado.' };
+
+    const db = createAdminClient();
+
+    // Lookup modelo name to check stock
+    const { data: modeloRow } = await db
+        .from('catalogo_equipos')
+        .select('modelo')
+        .eq('id', id)
+        .maybeSingle();
+
+    if (!modeloRow) return { error: 'Modelo no encontrado.' };
+
+    // Block deletion if physical stock > 0 exists in this bodega
+    const { data: stockCheck } = await db
+        .from('inventario')
+        .select('id')
+        .eq('bodega_id', bodegaId)
+        .eq('modelo', modeloRow.modelo)
+        .neq('estado', 'Inactivo')
+        .gt('cantidad', 0)
+        .limit(1);
+
+    if ((stockCheck ?? []).length > 0) {
+        return { error: 'No puedes eliminar un modelo que tiene stock físico en bodega. Ajusta el stock a 0 primero.' };
+    }
+
+    const { error } = await db
+        .from('catalogo_equipos')
+        .delete()
+        .eq('id', id);
+
+    if (error) {
+        console.error('[eliminarModeloCatalogoAction]', error.message);
+        return { error: 'No se pudo eliminar el modelo.' };
+    }
+
+    revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);
+    return { success: true };
+}
+
 // ── Familias CRUD ─────────────────────────────────────────────
 
 export async function eliminarFamiliaAction(id: string) {
@@ -238,22 +306,23 @@ export async function eliminarFamiliaAction(id: string) {
     return { success: true };
 }
 
-export async function crearFamiliaAction(nombre: string) {
+export async function crearFamiliaAction(nombre: string, bodegaId: string) {
     const user = await requireAdmin();
     if (!user) return { error: 'No autorizado.' };
 
     const n = nombre.trim();
     if (!n) return { error: 'El nombre no puede estar vacío.' };
+    if (!bodegaId) return { error: 'Bodega no especificada.' };
 
     const db = createAdminClient();
-    const { error } = await db.from('familias_hardware').insert({ nombre: n });
+    const { error } = await db.from('familias_hardware').insert({ nombre: n, bodega_id: bodegaId });
     if (error) {
-        if (error.code === '23505') return { error: 'Ya existe una familia con ese nombre.' };
+        if (error.code === '23505') return { error: 'Ya existe una familia con ese nombre en esta bodega.' };
         console.error('[crearFamiliaAction]', error.message);
         return { error: 'No se pudo crear la familia.' };
     }
 
-    revalidatePath('/dashboard/configuracion/bodegas');
+    revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);
     return { success: true };
 }
 
@@ -279,18 +348,20 @@ export async function editarFamiliaAction(id: string, nombre: string) {
 
 // ── Catálogo de modelos ───────────────────────────────────────
 
-export async function crearModeloCatalogoAction(familiaId: string, modelo: string, esSerializado: boolean) {
+export async function crearModeloCatalogoAction(familiaId: string, modelo: string, esSerializado: boolean, bodegaId: string) {
     const user = await requireAdmin();
     if (!user) return { error: 'No autorizado.' };
 
     const m = modelo.trim();
     if (!m || !familiaId) return { error: 'Datos incompletos.' };
+    if (!bodegaId) return { error: 'Bodega no especificada.' };
 
     const db = createAdminClient();
     const { error } = await db.from('catalogo_equipos').insert({
         familia_id: familiaId,
         modelo: m,
         es_serializado: esSerializado,
+        bodega_id: bodegaId,
     });
 
     if (error) {
@@ -302,6 +373,6 @@ export async function crearModeloCatalogoAction(familiaId: string, modelo: strin
         return { error: 'No se pudo crear el modelo.' };
     }
 
-    revalidatePath('/dashboard/configuracion/bodegas');
+    revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);
     return { success: true };
 }

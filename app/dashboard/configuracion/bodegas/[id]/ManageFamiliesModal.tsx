@@ -7,6 +7,7 @@ import type { FamiliaHardware } from './AddEquipoModal';
 
 interface Props {
     familias: FamiliaHardware[];
+    bodegaId: string;
 }
 
 function Alert({ type, msg }: { type: 'error' | 'success'; msg: string }) {
@@ -24,7 +25,7 @@ function Alert({ type, msg }: { type: 'error' | 'success'; msg: string }) {
     );
 }
 
-export function ManageFamiliesModal({ familias }: Props) {
+export function ManageFamiliesModal({ familias, bodegaId }: Props) {
     const [open, setOpen] = useState(false);
     const [isPending, startTransition] = useTransition();
     const [alert, setAlert] = useState<{ type: 'error' | 'success'; msg: string } | null>(null);
@@ -43,7 +44,7 @@ export function ManageFamiliesModal({ familias }: Props) {
         if (!n) { setAlert({ type: 'error', msg: 'Escribe un nombre para la familia.' }); return; }
 
         startTransition(async () => {
-            const result = await crearFamiliaAction(n);
+            const result = await crearFamiliaAction(n, bodegaId);
             if (result.error) {
                 setAlert({ type: 'error', msg: result.error });
             } else {

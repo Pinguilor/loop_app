@@ -4,12 +4,13 @@ import React, { useState, useTransition, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
     Wrench, Loader2, AlertTriangle, CheckCircle2,
-    X, Package, Hash, Plus, MinusCircle, PlusCircle,
+    X, Package, Hash, Plus, MinusCircle, PlusCircle, Search,
 } from 'lucide-react';
 import {
     ajustarStockAction, darBajaSeriesAction,
     addStockToBodegaAction,
 } from './actions';
+import { CustomSelect } from '@/app/dashboard/components/CustomSelect';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -314,9 +315,57 @@ function AjustarSerializadoModal({ grupo, onClose }: { grupo: StockGroup; onClos
 
 export function BodegaStockTable({ grupos }: { grupos: StockGroup[] }) {
     const [ajustarGrupo, setAjustarGrupo] = useState<StockGroup | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedFamily, setSelectedFamily] = useState('');
+
+    const familiaOptions = useMemo(() => {
+        const names = [...new Set(grupos.map(g => g.familia))].sort();
+        return names;
+    }, [grupos]);
+
+    const filteredGrupos = useMemo(() => {
+        const term = searchTerm.toLowerCase().trim();
+        return grupos.filter(g => {
+            const matchesSearch = !term ||
+                g.modelo.toLowerCase().includes(term) ||
+                g.familia.toLowerCase().includes(term);
+            const matchesFamily = !selectedFamily || g.familia === selectedFamily;
+            return matchesSearch && matchesFamily;
+        });
+    }, [grupos, searchTerm, selectedFamily]);
 
     return (
         <>
+            {/* ── Search & Filter bar ───────────────────────────── */}
+            <div className="px-5 py-3 border-b border-slate-100 flex flex-col sm:flex-row items-center gap-3">
+                {/* Search input */}
+                <div className="relative flex-1 w-full">
+                    <span className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                        <Search className="w-3.5 h-3.5 text-slate-400" />
+                    </span>
+                    <input
+                        type="text"
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        placeholder="Buscar por equipo o modelo..."
+                        className="w-full h-10 pl-9 pr-3.5 rounded-lg border border-slate-200 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent bg-slate-50 hover:bg-white transition-colors"
+                    />
+                </div>
+                {/* Family filter — [&>button] forces same h-10 + rounded-lg as the input */}
+                <div className="sm:w-52 w-full shrink-0 [&>div>button]:h-10 [&>div>button]:py-0 [&>div>button]:rounded-lg">
+                    <CustomSelect
+                        id="filter-familia"
+                        value={selectedFamily}
+                        onChange={setSelectedFamily}
+                        placeholder="Todas las familias"
+                        options={[
+                            { value: '', label: 'Todas las familias' },
+                            ...familiaOptions.map(f => ({ value: f, label: f })),
+                        ]}
+                    />
+                </div>
+            </div>
+
             <table className="w-full text-sm">
                 <thead>
                     <tr className="bg-slate-50 border-b border-slate-200">
@@ -328,7 +377,16 @@ export function BodegaStockTable({ grupos }: { grupos: StockGroup[] }) {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                    {grupos.map((g, idx) => (
+                    {filteredGrupos.length === 0 && (
+                        <tr>
+                            <td colSpan={5} className="text-center py-14 text-slate-400">
+                                <Search className="w-7 h-7 mx-auto mb-3 opacity-30" />
+                                <p className="text-sm font-semibold">No se encontraron equipos que coincidan con tu búsqueda.</p>
+                                <p className="text-xs mt-1">Prueba con otro término o revisa el filtro de familia.</p>
+                            </td>
+                        </tr>
+                    )}
+                    {filteredGrupos.map((g, idx) => (
                         <tr key={g.key} className={`hover:bg-slate-50/60 transition-colors ${idx % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
                             <td className="px-5 py-4">
                                 <span className="inline-flex items-center text-[11px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg border bg-slate-100 text-slate-600 border-slate-200">

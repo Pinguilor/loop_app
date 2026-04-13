@@ -192,19 +192,41 @@ export async function editarModeloCatalogoAction(id: string, modelo: string, bod
     const user = await requireAdmin();
     if (!user) return { error: 'No autorizado.' };
 
-    const m = modelo.trim();
-    if (!m) return { error: 'El nombre no puede estar vacío.' };
+    const nuevoNombre = modelo.trim();
+    if (!nuevoNombre) return { error: 'El nombre no puede estar vacío.' };
 
     const db = createAdminClient();
-    const { error } = await db
-        .from('catalogo_equipos')
-        .update({ modelo: m })
-        .eq('id', id);
 
-    if (error) {
-        if (error.code === '23505') return { error: 'Ya existe ese modelo en esta familia.' };
-        console.error('[editarModeloCatalogoAction]', error.message);
+    // 1. Obtener nombre actual antes de sobrescribir
+    const { data: modeloRow } = await db
+        .from('catalogo_equipos')
+        .select('modelo')
+        .eq('id', id)
+        .maybeSingle();
+
+    if (!modeloRow) return { error: 'Modelo no encontrado.' };
+    const nombreAntiguo = modeloRow.modelo as string;
+
+    // 2. Actualizar diccionario (catalogo_equipos) y stock físico (inventario) en paralelo
+    const [catalogoRes, inventarioRes] = await Promise.all([
+        db.from('catalogo_equipos')
+            .update({ modelo: nuevoNombre })
+            .eq('id', id),
+        db.from('inventario')
+            .update({ modelo: nuevoNombre })
+            .eq('modelo', nombreAntiguo)
+            .eq('bodega_id', bodegaId),
+    ]);
+
+    if (catalogoRes.error) {
+        if (catalogoRes.error.code === '23505') return { error: 'Ya existe ese modelo en esta familia.' };
+        console.error('[editarModeloCatalogoAction] catalogo:', catalogoRes.error.message);
         return { error: 'No se pudo actualizar el modelo.' };
+    }
+
+    if (inventarioRes.error) {
+        console.error('[editarModeloCatalogoAction] inventario:', inventarioRes.error.message);
+        return { error: 'Catálogo actualizado pero falló la sincronización con el inventario físico.' };
     }
 
     revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);

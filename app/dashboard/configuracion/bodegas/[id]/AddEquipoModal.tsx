@@ -3,6 +3,7 @@
 import React, { useState, useTransition, useRef, useEffect, useMemo } from 'react';
 import { Plus, X, Loader2, AlertTriangle, CheckCircle2, Package, ChevronDown, Hash } from 'lucide-react';
 import { addStockToBodegaAction } from './actions';
+import { CustomSelect } from '@/app/dashboard/components/CustomSelect';
 
 export interface CatalogoItem {
     modelo: string;
@@ -151,6 +152,9 @@ export function AddEquipoModal({ bodegaId, catalogo, familias }: Props) {
         fd.set('modelo', modelo);
         fd.set('familia', familiaFinal);
         fd.set('es_serializado', String(esSerializadoFinal));
+        // Pass familia_id when creating a new model so the backend can upsert
+        // catalogo_equipos with the correct bodega_id (prevents orphan catalog entries)
+        if (isNew && familiaId) fd.set('familia_id', familiaId);
 
         if (esSerializadoFinal) {
             fd.set('seriales', JSON.stringify(serialesParsed));
@@ -271,17 +275,13 @@ export function AddEquipoModal({ bodegaId, catalogo, familias }: Props) {
                                         <label className="block text-xs font-black text-slate-600 uppercase tracking-widest mb-1.5">
                                             Familia <span className="text-red-500 ml-1">*</span>
                                         </label>
-                                        <select
+                                        <CustomSelect
+                                            id="familia-select"
                                             value={familiaId}
-                                            onChange={e => setFamiliaId(e.target.value)}
-                                            autoFocus
-                                            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-transparent"
-                                        >
-                                            <option value="" disabled>Selecciona una familia…</option>
-                                            {familias.map(f => (
-                                                <option key={f.id} value={f.id}>{f.nombre}</option>
-                                            ))}
-                                        </select>
+                                            onChange={setFamiliaId}
+                                            placeholder="Selecciona una familia…"
+                                            options={familias.map(f => ({ value: f.id, label: f.nombre }))}
+                                        />
                                         <p className="mt-1 text-[11px] text-slate-400">
                                             ¿No ves la familia? Usa el botón <span className="font-bold">Gestionar Familias</span> del encabezado.
                                         </p>

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Warehouse, Plus, Pencil, Loader2, AlertTriangle, CheckCircle2,
     X, Search, ToggleLeft, ToggleRight, ChevronLeft, PackageSearch,
@@ -26,6 +27,46 @@ const TIPO_COLORS: Record<string, string> = {
 
 function tipoBadgeClass(tipo: string) {
     return TIPO_COLORS[tipo?.toLowerCase()] ?? 'bg-slate-100 text-slate-600 border-slate-200';
+}
+
+// ── DescripcionTooltip ─────────────────────────────────────────
+function DescripcionTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+    const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
+    const ref = useRef<HTMLDivElement>(null);
+    return (
+        <>
+            <div
+                ref={ref}
+                className="min-w-0"
+                onMouseEnter={() => {
+                    if (ref.current) {
+                        const r = ref.current.getBoundingClientRect();
+                        setCoords({ x: r.left + r.width / 2, y: r.top });
+                    }
+                }}
+                onMouseLeave={() => setCoords(null)}
+            >
+                {children}
+            </div>
+            {coords && createPortal(
+                <span
+                    style={{
+                        position: 'fixed',
+                        top: coords.y - 8,
+                        left: coords.x,
+                        transform: 'translate(-50%, -100%)',
+                        zIndex: 9999,
+                        maxWidth: 280,
+                    }}
+                    className="bg-slate-800 text-white text-xs font-semibold rounded-lg py-1.5 px-2.5 whitespace-normal pointer-events-none shadow-xl leading-snug"
+                >
+                    {text}
+                    <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+                </span>,
+                document.body
+            )}
+        </>
+    );
 }
 
 // ── Backdrop ───────────────────────────────────────────────────
@@ -321,7 +362,9 @@ export function GestionBodegasClient({ bodegas }: { bodegas: Bodega[] }) {
 
             {/* Search */}
             <div className="relative">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <span className="absolute inset-y-0 left-3.5 flex items-center pointer-events-none">
+                    <Search className="w-4 h-4 text-slate-400" />
+                </span>
                 <input
                     type="text"
                     placeholder="Buscar por nombre o tipo…"
@@ -333,14 +376,14 @@ export function GestionBodegasClient({ bodegas }: { bodegas: Bodega[] }) {
 
             {/* Table */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm table-fixed">
                     <thead>
                         <tr className="bg-slate-50 border-b border-slate-200">
-                            <th className="text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Nombre de Bodega</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Tipo / Locación</th>
-                            <th className="text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Descripción</th>
-                            <th className="text-center px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Estado</th>
-                            <th className="text-right px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Acciones</th>
+                            <th className="w-[30%] text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Nombre de Bodega</th>
+                            <th className="w-[11%] text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Tipo / Locación</th>
+                            <th className="w-[20%] text-left px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Descripción</th>
+                            <th className="w-[16%] text-center px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Estado</th>
+                            <th className="w-[23%] text-right px-5 py-3.5 text-xs font-black text-slate-500 uppercase tracking-widest">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -376,10 +419,14 @@ export function GestionBodegasClient({ bodegas }: { bodegas: Bodega[] }) {
                                 </td>
 
                                 {/* Descripción */}
-                                <td className="px-5 py-4 max-w-[220px]">
-                                    <span className="text-xs text-slate-500 truncate block">
-                                        {b.descripcion || <span className="italic text-slate-300">Sin descripción</span>}
-                                    </span>
+                                <td className="px-5 py-4 overflow-hidden">
+                                    {b.descripcion ? (
+                                        <DescripcionTooltip text={b.descripcion}>
+                                            <span className="text-xs text-slate-500 truncate block">{b.descripcion}</span>
+                                        </DescripcionTooltip>
+                                    ) : (
+                                        <span className="text-xs italic text-slate-300">Sin descripción</span>
+                                    )}
                                 </td>
 
                                 {/* Estado */}
@@ -409,22 +456,23 @@ export function GestionBodegasClient({ bodegas }: { bodegas: Bodega[] }) {
                                         </Link>
                                         <button
                                             onClick={() => setEditBodega(b)}
-                                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors"
+                                            title="Editar"
+                                            className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
                                         >
-                                            <Pencil className="w-3 h-3" />
-                                            Editar
+                                            <Pencil className="w-3.5 h-3.5" />
                                         </button>
                                         <button
                                             onClick={() => setToggleBodega(b)}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition-colors ${
+                                            title={b.activo !== false ? 'Desactivar' : 'Activar'}
+                                            className={`p-1.5 rounded-lg border transition-colors ${
                                                 b.activo !== false
-                                                    ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                                    ? 'border-red-200 text-red-500 hover:bg-red-50'
                                                     : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'
                                             }`}
                                         >
                                             {b.activo !== false
-                                                ? <><ToggleLeft className="w-3 h-3" /> Desactivar</>
-                                                : <><ToggleRight className="w-3 h-3" /> Activar</>}
+                                                ? <ToggleLeft className="w-3.5 h-3.5" />
+                                                : <ToggleRight className="w-3.5 h-3.5" />}
                                         </button>
                                     </div>
                                 </td>

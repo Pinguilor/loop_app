@@ -71,7 +71,7 @@ export function ManageFamiliesModal({ familias, bodegaId }: Props) {
         if (!n) { setAlert({ type: 'error', msg: 'El nombre no puede estar vacío.' }); return; }
 
         startTransition(async () => {
-            const result = await editarFamiliaAction(id, n);
+            const result = await editarFamiliaAction(id, n, bodegaId);
             if (result.error) {
                 setAlert({ type: 'error', msg: result.error });
             } else {

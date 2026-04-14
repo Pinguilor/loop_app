@@ -29,8 +29,27 @@ export async function addStockToBodegaAction(formData: FormData) {
     const esSerial    = formData.get('es_serializado') === 'true';
     const serialesRaw = formData.get('seriales') as string | null;
     const cantidadRaw = parseInt(formData.get('cantidad') as string, 10);
+    // Present only when user picked "+ Crear nuevo" from the combobox
+    const familiaId   = (formData.get('familia_id') as string | null) ?? null;
 
     if (!bodegaId || !modelo || !familia) return { error: 'Datos incompletos.' };
+
+    // ── Upsert catalog entry with bodega_id (prevents orphan rows) ────────────
+    // Only runs for new-model creations (familiaId is passed from the frontend).
+    // Uses ON CONFLICT (familia_id, modelo) to update bodega_id if the row already
+    // exists without it (e.g. created via a trigger or an earlier flow).
+    if (familiaId) {
+        const { error: catError } = await db
+            .from('catalogo_equipos')
+            .upsert(
+                { familia_id: familiaId, modelo, es_serializado: esSerial, bodega_id: bodegaId },
+                { onConflict: 'familia_id,modelo' }
+            );
+        if (catError) {
+            console.error('[addStockToBodegaAction] catalogo upsert:', catError.message);
+            return { error: 'No se pudo registrar el modelo en el catálogo.' };
+        }
+    }
 
     if (esSerial) {
         const seriales: string[] = serialesRaw ? JSON.parse(serialesRaw) : [];
@@ -262,6 +281,19 @@ export async function eliminarModeloCatalogoAction(id: string, bodegaId: string)
         return { error: 'No puedes eliminar un modelo que tiene stock físico en bodega. Ajusta el stock a 0 primero.' };
     }
 
+    // A. Purge zero-stock ghost rows from inventario before removing the catalog entry
+    const { error: invError } = await db
+        .from('inventario')
+        .delete()
+        .eq('modelo', modeloRow.modelo)
+        .eq('bodega_id', bodegaId);
+
+    if (invError) {
+        console.error('[eliminarModeloCatalogoAction] inventario:', invError.message);
+        return { error: 'No se pudieron limpiar los registros de inventario del modelo.' };
+    }
+
+    // B. Remove the model from the catalog dictionary
     const { error } = await db
         .from('catalogo_equipos')
         .delete()
@@ -348,7 +380,7 @@ export async function crearFamiliaAction(nombre: string, bodegaId: string) {
     return { success: true };
 }
 
-export async function editarFamiliaAction(id: string, nombre: string) {
+export async function editarFamiliaAction(id: string, nombre: string, bodegaId: string) {
     const user = await requireAdmin();
     if (!user) return { error: 'No autorizado.' };
 
@@ -356,15 +388,35 @@ export async function editarFamiliaAction(id: string, nombre: string) {
     if (!n) return { error: 'El nombre no puede estar vacío.' };
 
     const db = createAdminClient();
-    const { error } = await db
-        .from('familias_hardware').update({ nombre: n }).eq('id', id);
 
-    if (error) {
-        console.error('[editarFamiliaAction]', error.message);
+    // 1. Capturar el nombre antiguo antes de sobrescribir
+    const { data: familiaRow } = await db
+        .from('familias_hardware').select('nombre').eq('id', id).maybeSingle();
+
+    if (!familiaRow) return { error: 'Familia no encontrada.' };
+    const nombreAntiguo = familiaRow.nombre as string;
+
+    // 2. Actualizar familias_hardware e inventario en paralelo (cascada)
+    const [familiaRes, inventarioRes] = await Promise.all([
+        db.from('familias_hardware').update({ nombre: n }).eq('id', id),
+        db.from('inventario')
+            .update({ familia: n })
+            .eq('familia', nombreAntiguo)
+            .eq('bodega_id', bodegaId),
+    ]);
+
+    if (familiaRes.error) {
+        if (familiaRes.error.code === '23505') return { error: 'Ya existe una familia con ese nombre.' };
+        console.error('[editarFamiliaAction] familia:', familiaRes.error.message);
         return { error: 'No se pudo actualizar la familia.' };
     }
 
-    revalidatePath('/dashboard/configuracion/bodegas');
+    if (inventarioRes.error) {
+        console.error('[editarFamiliaAction] inventario:', inventarioRes.error.message);
+        return { error: 'Familia actualizada pero falló la sincronización con el inventario físico.' };
+    }
+
+    revalidatePath(`/dashboard/configuracion/bodegas/${bodegaId}`);
     return { success: true };
 }
 

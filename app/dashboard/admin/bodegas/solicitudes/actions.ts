@@ -274,9 +274,125 @@ export async function getStockEnBodegaAction(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Aprobar solicitud de ENTREGA → RPC atómica (ya existente)
+// Auto-asignación inteligente de bodega de origen por ítem
+// Devuelve la mejor bodega (mayor stock que cubre la cantidad) para cada ítem.
+// Para serializados la bodega es fija (la que contiene el serial específico).
 // ─────────────────────────────────────────────────────────────────────────────
-// Tipo para los ítems que el cliente pasa directamente al action
+export interface AutoAsignacionInput {
+    solicitudItemId: string;
+    inventarioId: string;
+    modelo: string | null;
+    familia: string | null;
+    esSerializado: boolean;
+    cantidad: number;
+}
+
+export interface AutoAsignacionResult {
+    solicitudItemId: string;
+    bodegaId: string;
+    bodegaNombre: string;
+    disponible: number;
+    suficiente: boolean;
+}
+
+export async function getAutoAsignacionBodegasAction(
+    items: AutoAsignacionInput[]
+): Promise<{ data: AutoAsignacionResult[] | null; error?: string }> {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { data: null, error: 'No autorizado.' };
+
+        const { data: bodegas } = await supabase
+            .from('bodegas')
+            .select('id, nombre')
+            .ilike('tipo', 'INTERNA')
+            .eq('activo', true)
+            .order('nombre', { ascending: true });
+
+        const bodegasMap = new Map<string, string>((bodegas || []).map(b => [b.id, b.nombre]));
+        const bodegaIds = (bodegas || []).map(b => b.id);
+
+        if (bodegaIds.length === 0) {
+            return { data: null, error: 'No hay bodegas internas configuradas.' };
+        }
+
+        // Serialized: read bodega_id from the specific inventario row
+        const serializedIds = items.filter(i => i.esSerializado).map(i => i.inventarioId);
+        const { data: serializedRows } = serializedIds.length
+            ? await supabase.from('inventario').select('id, bodega_id').in('id', serializedIds)
+            : { data: [] as { id: string; bodega_id: string }[] };
+        const serializedBodegaMap = new Map((serializedRows || []).map(r => [r.id, r.bodega_id]));
+
+        // Generic: fetch all stock across INTERNA bodegas for the requested combos
+        const genericItems = items.filter(i => !i.esSerializado);
+        let genericStock: { bodega_id: string; modelo: string; familia: string; cantidad: number }[] = [];
+
+        if (genericItems.length > 0) {
+            const { data: stockRows } = await supabase
+                .from('inventario')
+                .select('bodega_id, modelo, familia, cantidad')
+                .in('bodega_id', bodegaIds)
+                .eq('es_serializado', false)
+                .gt('cantidad', 0);
+
+            const combos = new Set(genericItems.map(i => `${i.modelo}__${i.familia}`));
+            genericStock = (stockRows || []).filter(r => combos.has(`${r.modelo}__${r.familia}`));
+        }
+
+        const results: AutoAsignacionResult[] = items.map(item => {
+            if (item.esSerializado) {
+                const bodegaId = serializedBodegaMap.get(item.inventarioId) || bodegaIds[0];
+                return {
+                    solicitudItemId: item.solicitudItemId,
+                    bodegaId,
+                    bodegaNombre: bodegasMap.get(bodegaId) || 'Desconocida',
+                    disponible: 1,
+                    suficiente: true,
+                };
+            }
+
+            // Aggregate stock per bodega for this generic item
+            const stockByBodega: Record<string, number> = {};
+            for (const row of genericStock) {
+                if (row.modelo === item.modelo && row.familia === item.familia) {
+                    stockByBodega[row.bodega_id] = (stockByBodega[row.bodega_id] || 0) + row.cantidad;
+                }
+            }
+
+            // Pick: prefer bodega with sufficient stock (highest stock wins ties),
+            // fall back to bodega with most stock even if insufficient
+            let bestId = bodegaIds[0];
+            let bestStock = 0;
+            let hasSufficient = false;
+
+            for (const [bId, stock] of Object.entries(stockByBodega)) {
+                if (!bodegasMap.has(bId)) continue;
+                if (stock >= item.cantidad && (!hasSufficient || stock > bestStock)) {
+                    bestId = bId; bestStock = stock; hasSufficient = true;
+                } else if (!hasSufficient && stock > bestStock) {
+                    bestId = bId; bestStock = stock;
+                }
+            }
+
+            return {
+                solicitudItemId: item.solicitudItemId,
+                bodegaId: bestId,
+                bodegaNombre: bodegasMap.get(bestId) || 'Desconocida',
+                disponible: bestStock,
+                suficiente: bestStock >= item.cantidad,
+            };
+        });
+
+        return { data: results };
+    } catch (e: any) {
+        return { data: null, error: e.message };
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aprobar solicitud de ENTREGA → RPC atómica (Despacho Multibodega)
+// ─────────────────────────────────────────────────────────────────────────────
 export interface ItemContexto {
     cantidad: number;
     modelo: string | null;
@@ -284,13 +400,17 @@ export interface ItemContexto {
     numero_serie: string | null;
 }
 
+export interface ItemBodegaAsignacion {
+    solicitudItemId: string;
+    bodegaId: string;
+}
+
 export async function aprobarSolicitudAction(
     solicitudId: string,
-    bodegaCentralId: string,
+    itemBodegas: ItemBodegaAsignacion[],  // bodega de origen por ítem
     approvedItemIds: string[],
     comentario: string | null = null,
     firmaBase64: string | null = null,
-    // Contexto pasado desde el cliente para evitar queries adicionales
     ticketIdCliente: string | null = null,
     tecnicoNombreCliente: string | null = null,
     itemsContexto: ItemContexto[] = []
@@ -311,8 +431,14 @@ export async function aprobarSolicitudAction(
             return { error: 'Debes seleccionar al menos un ítem para aprobar.' };
         }
 
-        // ── Validación de stock antes de ejecutar la RPC ─────────────────────
-        // Cargamos los ítems aprobados con su detalle de inventario
+        // Verify every approved item has a bodega assigned
+        for (const itemId of approvedItemIds) {
+            if (!itemBodegas.find(ib => ib.solicitudItemId === itemId)?.bodegaId) {
+                return { error: 'Todos los ítems aprobados deben tener una bodega de origen asignada.' };
+            }
+        }
+
+        // ── Validación de stock por ítem con su bodega específica ─────────────
         const { data: itemsToValidate, error: itemsErr } = await supabase
             .from('solicitud_items')
             .select('id, cantidad, inventario:inventario_id(id, modelo, familia, es_serializado, numero_serie)')
@@ -320,31 +446,30 @@ export async function aprobarSolicitudAction(
 
         if (itemsErr) throw new Error(`Error obteniendo ítems: ${itemsErr.message}`);
 
-        // Para cada ítem verificamos stock en la bodega seleccionada
         for (const si of (itemsToValidate ?? []) as any[]) {
             const inv = si.inventario;
             if (!inv) throw new Error(`Ítem ${si.id} no tiene inventario asociado.`);
 
+            const bodegaId = itemBodegas.find(ib => ib.solicitudItemId === si.id)!.bodegaId;
+
             if (inv.es_serializado) {
-                // Serializado: debe existir en esa bodega con estado Disponible
                 const { count } = await supabase
                     .from('inventario')
                     .select('id', { count: 'exact', head: true })
-                    .eq('bodega_id', bodegaCentralId)
+                    .eq('bodega_id', bodegaId)
                     .eq('modelo', inv.modelo)
                     .eq('es_serializado', true)
                     .ilike('estado', 'Disponible');
                 if ((count ?? 0) < 1) {
                     throw new Error(
-                        `Validación fallida: Stock insuficiente en bodega de origen para "${inv.modelo}" (serializado) al momento de aprobar.`
+                        `Stock insuficiente en bodega de origen para "${inv.modelo}" (serializado).`
                     );
                 }
             } else {
-                // Genérico: suma de cantidad en esa bodega debe cubrir lo solicitado
                 const { data: stockRows } = await supabase
                     .from('inventario')
                     .select('cantidad')
-                    .eq('bodega_id', bodegaCentralId)
+                    .eq('bodega_id', bodegaId)
                     .eq('modelo', inv.modelo)
                     .eq('familia', inv.familia)
                     .eq('es_serializado', false)
@@ -353,17 +478,19 @@ export async function aprobarSolicitudAction(
                 const totalDisponible = (stockRows ?? []).reduce((s: number, r: any) => s + (r.cantidad ?? 0), 0);
                 if (totalDisponible < si.cantidad) {
                     throw new Error(
-                        `Validación fallida: Stock insuficiente en bodega de origen para "${inv.modelo}" — disponible: ${totalDisponible}, requerido: ${si.cantidad}.`
+                        `Stock insuficiente en bodega de origen para "${inv.modelo}" — disponible: ${totalDisponible}, requerido: ${si.cantidad}.`
                     );
                 }
             }
         }
-        // ────────────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────────────
+
+        const approvedItemBodegas = itemBodegas.filter(ib => approvedItemIds.includes(ib.solicitudItemId));
 
         const { data, error } = await supabase.rpc('aprobar_solicitud_rpc', {
             p_solicitud_id:      solicitudId,
             p_bodeguero_id:      user.id,
-            p_bodega_central:    bodegaCentralId,
+            p_item_bodegas:      approvedItemBodegas,
             p_approved_item_ids: approvedItemIds,
             p_comentario:        comentario ?? null,
         });

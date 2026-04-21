@@ -158,6 +158,14 @@ export interface Inventario {
     bodegas?: Bodega;
 }
 
+export interface SolicitudItem {
+    id: string;
+    solicitud_id: string;
+    inventario_id: string;
+    cantidad: number;
+    bodega_origen_id: string | null; // populated at approval time
+}
+
 export interface MovimientoInventario {
     id: string;
     inventario_id: string;

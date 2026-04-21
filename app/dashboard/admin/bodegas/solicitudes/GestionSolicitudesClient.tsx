@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useTransition, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
     CheckCircle2, XCircle, Clock, PackageCheck, Hash, Layers,
     Loader2, AlertCircle, ChevronRight, Warehouse, User,
@@ -11,8 +11,9 @@ import dynamic from 'next/dynamic';
 import {
     aprobarSolicitudAction, rechazarSolicitudAction,
     aprobarDevolucionAction, rechazarDevolucionAction,
-    getStockEnBodegaAction,
+    getStockEnBodegaAction, getAutoAsignacionBodegasAction,
     type ItemContexto, type StockCheckResult,
+    type AutoAsignacionInput, type ItemBodegaAsignacion,
 } from './actions';
 import { CustomSelect } from '@/app/dashboard/components/CustomSelect';
 import { useRouter } from 'next/navigation';
@@ -211,7 +212,7 @@ function BodegaSelector({
     );
 }
 
-// ── MODAL: Aprobar solicitud de Entrega ───────────────────────────────────────
+// ── MODAL: Aprobar solicitud de Entrega — Despacho Multibodega ────────────────
 function ModalAprobar({
     solicitud,
     bodegasCentrales,
@@ -223,53 +224,79 @@ function ModalAprobar({
     onClose: () => void;
     onSuccess: () => void;
 }) {
-    const [bodegaId, setBodegaId] = useState(bodegasCentrales[0]?.id || '');
+    // Bodega de origen por ítem: solicitudItemId → bodegaId
+    const [itemBodegas, setItemBodegas] = useState<Record<string, string>>({});
     const [itemsAprobados, setItemsAprobados] = useState<Set<string>>(
         () => new Set(solicitud.solicitud_items.map(i => i.id))
     );
+    const [stockPorItem, setStockPorItem] = useState<Record<string, StockCheckResult>>({});
+    const [isAutoAsignando, setIsAutoAsignando] = useState(true);
+    const [checkingItems, setCheckingItems] = useState<Set<string>>(new Set());
     const [comentario, setComentario] = useState('');
     const [error, setError] = useState('');
     const [isPending, startTransition] = useTransition();
     const sigRef = useRef<any>(null);
     const [renderTrigger, setRenderTrigger] = useState(0);
 
-    // ── Stock en tiempo real ──────────────────────────────────────────────────
-    const [stockPorItem, setStockPorItem] = useState<Record<string, StockCheckResult>>({});
-    const [isCheckingStock, setIsCheckingStock] = useState(false);
-
-    const checkStock = useCallback(async (bId: string) => {
-        if (!bId || solicitud.solicitud_items.length === 0) return;
-        setIsCheckingStock(true);
-        const items = solicitud.solicitud_items.map(i => ({
-            solicitudItemId: i.id,
-            modelo:          i.inventario?.modelo ?? null,
-            familia:         i.inventario?.familia ?? null,
-            esSerializado:   i.inventario?.es_serializado ?? false,
-            cantidad:        i.cantidad,
-        }));
-        const res = await getStockEnBodegaAction(bId, items);
-        if (res.data) {
-            const map: Record<string, StockCheckResult> = {};
-            for (const r of res.data) map[r.solicitudItemId] = r;
-            setStockPorItem(map);
+    // ── Auto-asignación inteligente al montar ─────────────────────────────────
+    useEffect(() => {
+        async function autoAsignar() {
+            setIsAutoAsignando(true);
+            const inputs: AutoAsignacionInput[] = solicitud.solicitud_items.map(i => ({
+                solicitudItemId: i.id,
+                inventarioId:    i.inventario?.id ?? '',
+                modelo:          i.inventario?.modelo ?? null,
+                familia:         i.inventario?.familia ?? null,
+                esSerializado:   i.inventario?.es_serializado ?? false,
+                cantidad:        i.cantidad,
+            }));
+            const res = await getAutoAsignacionBodegasAction(inputs);
+            if (res.data) {
+                const bodegas: Record<string, string> = {};
+                const stock: Record<string, StockCheckResult> = {};
+                for (const r of res.data) {
+                    bodegas[r.solicitudItemId] = r.bodegaId;
+                    stock[r.solicitudItemId] = {
+                        solicitudItemId: r.solicitudItemId,
+                        disponible: r.disponible,
+                        suficiente: r.suficiente,
+                    };
+                }
+                setItemBodegas(bodegas);
+                setStockPorItem(stock);
+            }
+            setIsAutoAsignando(false);
         }
-        setIsCheckingStock(false);
+        autoAsignar();
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    // ── Override manual de bodega por ítem ───────────────────────────────────
+    const handleItemBodegaChange = useCallback(async (solicitudItemId: string, newBodegaId: string) => {
+        setItemBodegas(prev => ({ ...prev, [solicitudItemId]: newBodegaId }));
+        setCheckingItems(prev => new Set([...prev, solicitudItemId]));
+
+        const item = solicitud.solicitud_items.find(i => i.id === solicitudItemId);
+        if (item) {
+            const res = await getStockEnBodegaAction(newBodegaId, [{
+                solicitudItemId,
+                modelo:        item.inventario?.modelo ?? null,
+                familia:       item.inventario?.familia ?? null,
+                esSerializado: item.inventario?.es_serializado ?? false,
+                cantidad:      item.cantidad,
+            }]);
+            if (res.data?.[0]) {
+                setStockPorItem(prev => ({ ...prev, [solicitudItemId]: res.data![0] }));
+            }
+        }
+
+        setCheckingItems(prev => { const n = new Set(prev); n.delete(solicitudItemId); return n; });
     }, [solicitud.solicitud_items]);
 
-    // Verificar al montar y cada vez que cambie la bodega
-    useEffect(() => { checkStock(bodegaId); }, [bodegaId, checkStock]);
-
-    // ─────────────────────────────────────────────────────────────────────────
-
+    // ── Derivados ─────────────────────────────────────────────────────────────
     const isFirmaVacia = !sigRef.current || sigRef.current.isEmpty();
 
-    const toggleItem = (id: string) => {
-        setItemsAprobados(prev => {
-            const next = new Set(prev);
-            if (next.has(id)) next.delete(id); else next.add(id);
-            return next;
-        });
-    };
+    const toggleItem = (id: string) =>
+        setItemsAprobados(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
     const aprobadosCount = itemsAprobados.size;
     const totalCount = solicitud.solicitud_items.length;
@@ -278,21 +305,39 @@ function ModalAprobar({
         .filter(i => itemsAprobados.has(i.id))
         .reduce((s, i) => s + i.cantidad, 0);
 
-    // Hay stock insuficiente si algún ítem aprobado no tiene stock suficiente
     const itemsConStockInsuficiente = solicitud.solicitud_items.filter(i =>
-        itemsAprobados.has(i.id) &&
-        stockPorItem[i.id] !== undefined &&
-        !stockPorItem[i.id].suficiente
+        itemsAprobados.has(i.id) && stockPorItem[i.id] !== undefined && !stockPorItem[i.id].suficiente
     );
     const hayStockInsuficiente = itemsConStockInsuficiente.length > 0;
 
+    // Detectar si el despacho cruza múltiples bodegas
+    const bodegasUsadas = useMemo(() => {
+        const map = new Map<string, { nombre: string; count: number }>();
+        for (const [itemId, bodegaId] of Object.entries(itemBodegas)) {
+            if (!itemsAprobados.has(itemId)) continue;
+            const bodega = bodegasCentrales.find(b => b.id === bodegaId);
+            const prev = map.get(bodegaId);
+            map.set(bodegaId, { nombre: bodega?.nombre ?? bodegaId, count: (prev?.count ?? 0) + 1 });
+        }
+        return map;
+    }, [itemBodegas, itemsAprobados, bodegasCentrales]);
+
+    const isMultiBodega = bodegasUsadas.size > 1;
+    const isGloballyChecking = isAutoAsignando || checkingItems.size > 0;
+
     const handleConfirm = () => {
-        if (!bodegaId) { setError('Debes seleccionar una bodega de origen.'); return; }
+        const itemsSinBodega = Array.from(itemsAprobados).filter(id => !itemBodegas[id]);
+        if (itemsSinBodega.length > 0) { setError('Todos los ítems aprobados deben tener una bodega de origen.'); return; }
         if (aprobadosCount === 0) { setError('Debes aprobar al menos un ítem.'); return; }
-        if (hayStockInsuficiente) { setError('Hay ítems sin stock suficiente en la bodega seleccionada.'); return; }
+        if (hayStockInsuficiente) { setError('Hay ítems con stock insuficiente. Cambia la bodega o desactiva esos ítems.'); return; }
         if (!sigRef.current || sigRef.current.isEmpty()) { setError('La firma del técnico es obligatoria.'); return; }
         setError('');
+
         const firmaBase64 = sigRef.current.getTrimmedCanvas().toDataURL('image/png');
+        const itemBodegasArray: ItemBodegaAsignacion[] = Array.from(itemsAprobados).map(id => ({
+            solicitudItemId: id,
+            bodegaId: itemBodegas[id] || '',
+        }));
         const itemsContexto = solicitud.solicitud_items
             .filter(i => itemsAprobados.has(i.id))
             .map(i => ({
@@ -301,10 +346,11 @@ function ModalAprobar({
                 es_serializado: i.inventario?.es_serializado ?? false,
                 numero_serie:   i.inventario?.numero_serie ?? null,
             }));
+
         startTransition(async () => {
             const res = await aprobarSolicitudAction(
                 solicitud.id,
-                bodegaId,
+                itemBodegasArray,
                 Array.from(itemsAprobados),
                 comentario.trim() || null,
                 firmaBase64,
@@ -319,7 +365,7 @@ function ModalAprobar({
 
     return (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl animate-in fade-in zoom-in-95 duration-200 overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]">
                 <div className="bg-emerald-50 px-6 py-4 border-b border-emerald-100 flex items-center gap-3 shrink-0">
                     <div className="p-2 bg-emerald-100 text-emerald-700 rounded-xl">
                         <CheckCircle2 className="w-5 h-5" />
@@ -329,11 +375,36 @@ function ModalAprobar({
                         <p className="text-xs text-slate-500 font-medium">
                             {solicitud.tecnico?.full_name || 'Técnico'} · Ticket NC-{solicitud.ticket?.numero_ticket}
                             {esAprobacionParcial && <span className="ml-2 text-amber-600 font-black">· Parcial</span>}
+                            {isMultiBodega && !isAutoAsignando && <span className="ml-2 text-blue-600 font-black">· Multibodega</span>}
                         </p>
                     </div>
                 </div>
 
                 <div className="overflow-y-auto flex-1 p-6 space-y-5">
+
+                    {/* ── Banner de auto-asignación en curso ── */}
+                    {isAutoAsignando && (
+                        <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                            <Loader2 className="w-4 h-4 animate-spin text-indigo-500 shrink-0" />
+                            <span className="text-xs font-semibold text-slate-600">
+                                Buscando mejor bodega para cada ítem…
+                            </span>
+                        </div>
+                    )}
+
+                    {/* ── Banner multibodega ── */}
+                    {isMultiBodega && !isAutoAsignando && (
+                        <div className="flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 text-blue-700 text-xs font-medium">
+                            <Warehouse className="w-4 h-4 shrink-0 mt-0.5" />
+                            <span>
+                                Despacho desde <b>{bodegasUsadas.size} bodegas distintas</b>:{' '}
+                                {Array.from(bodegasUsadas.values()).map(b => `${b.nombre} (${b.count})`).join(' · ')}.
+                                Revisa la asignación por ítem antes de aprobar.
+                            </span>
+                        </div>
+                    )}
+
+                    {/* ── Aprobación parcial ── */}
                     {esAprobacionParcial && (
                         <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-xs font-medium">
                             <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
@@ -341,84 +412,99 @@ function ModalAprobar({
                         </div>
                     )}
 
-                    {/* ── Lista de ítems con indicador de stock ── */}
+                    {/* ── Lista de ítems con bodega por ítem ── */}
                     <div>
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ítems a despachar</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ítems · Bodega de origen</span>
                             <span className="text-[10px] font-black text-slate-500">{aprobadosCount}/{totalCount} · {totalUnidadesAprobadas} unid.</span>
                         </div>
                         <div className="bg-slate-50 rounded-xl border border-slate-200 divide-y divide-slate-100 overflow-hidden">
                             {solicitud.solicitud_items.map(item => {
                                 const checked = itemsAprobados.has(item.id);
                                 const stock = stockPorItem[item.id];
+                                const isCheckingThis = checkingItems.has(item.id);
                                 const sinStock = checked && stock && !stock.suficiente;
+                                const esSer = item.inventario?.es_serializado ?? false;
+                                const bodegaAsignada = itemBodegas[item.id] || '';
 
                                 return (
-                                    <label key={item.id} className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                                        sinStock    ? 'bg-red-50/60' :
-                                        checked     ? 'bg-emerald-50/60' : 'bg-white opacity-60'
+                                    <div key={item.id} className={`px-4 py-3 transition-colors ${
+                                        sinStock  ? 'bg-red-50/60' :
+                                        checked   ? 'bg-emerald-50/40' : 'bg-white opacity-55'
                                     }`}>
-                                        <input type="checkbox" checked={checked} onChange={() => toggleItem(item.id)}
-                                            className="w-4 h-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 shrink-0" />
-                                        <div className="flex flex-col min-w-0 flex-1">
-                                            <span className="text-sm font-bold text-slate-700 truncate">{item.inventario?.modelo ?? '—'}</span>
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase">{item.inventario?.familia ?? '—'}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            {item.inventario?.es_serializado && item.inventario.numero_serie && (
-                                                <span className="font-mono text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded">#{item.inventario.numero_serie}</span>
-                                            )}
-                                            <span className="text-sm font-black text-slate-800">x{item.cantidad}</span>
-                                            {/* Indicador de stock en tiempo real */}
-                                            {isCheckingStock ? (
-                                                <Loader2 className="w-3.5 h-3.5 text-slate-300 animate-spin" />
-                                            ) : stock ? (
-                                                stock.suficiente ? (
-                                                    <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                                        {stock.disponible} disp.
+                                        {/* Fila superior: checkbox + nombre + cantidad + stock */}
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input type="checkbox" checked={checked} onChange={() => toggleItem(item.id)}
+                                                className="w-4 h-4 rounded border-slate-300 text-emerald-600 accent-emerald-600 shrink-0" />
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                                <span className="text-sm font-bold text-slate-700 truncate">{item.inventario?.modelo ?? '—'}</span>
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase">{item.inventario?.familia ?? '—'}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {esSer && item.inventario?.numero_serie && (
+                                                    <span className="font-mono text-[10px] bg-indigo-50 border border-indigo-100 text-indigo-600 px-1.5 py-0.5 rounded">
+                                                        #{item.inventario.numero_serie}
+                                                    </span>
+                                                )}
+                                                <span className="text-sm font-black text-slate-800">x{item.cantidad}</span>
+                                                {isCheckingThis || isAutoAsignando ? (
+                                                    <Loader2 className="w-3.5 h-3.5 text-slate-300 animate-spin" />
+                                                ) : stock ? (
+                                                    stock.suficiente ? (
+                                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                                            {stock.disponible} disp.
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                                            <AlertTriangle className="w-3 h-3" />{stock.disponible} disp.
+                                                        </span>
+                                                    )
+                                                ) : null}
+                                            </div>
+                                        </label>
+
+                                        {/* Fila inferior: selector de bodega (solo si el ítem está activo) */}
+                                        {checked && (
+                                            <div className="mt-2 ml-7 flex items-center gap-2">
+                                                <Warehouse className="w-3 h-3 text-slate-400 shrink-0" />
+                                                {esSer ? (
+                                                    /* Serializado: bodega fija, no editable */
+                                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                                                        {bodegasCentrales.find(b => b.id === bodegaAsignada)?.nombre ?? 'Auto-asignada'}
+                                                        {' '}· fija por serial
                                                     </span>
                                                 ) : (
-                                                    <span className="text-[10px] font-black text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">
-                                                        {stock.disponible} disp.
-                                                    </span>
-                                                )
-                                            ) : null}
-                                        </div>
-                                    </label>
+                                                    /* Genérico: bodega seleccionable */
+                                                    <select
+                                                        value={bodegaAsignada}
+                                                        onChange={e => handleItemBodegaChange(item.id, e.target.value)}
+                                                        disabled={isAutoAsignando}
+                                                        className="text-[10px] font-bold border border-slate-200 rounded-md px-2 py-0.5 bg-white text-slate-700 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:opacity-50"
+                                                    >
+                                                        {bodegasCentrales.length === 0 && (
+                                                            <option value="">Sin bodegas</option>
+                                                        )}
+                                                        {bodegasCentrales.map(b => (
+                                                            <option key={b.id} value={b.id}>{b.nombre}</option>
+                                                        ))}
+                                                    </select>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 );
                             })}
                         </div>
                     </div>
 
-                    {/* ── Selector de bodega con aviso de stock insuficiente ── */}
-                    <div>
-                        <BodegaSelector
-                            bodegasCentrales={bodegasCentrales}
-                            value={bodegaId}
-                            onChange={(v) => { setBodegaId(v); setError(''); }}
-                            label="Descontar desde Bodega"
-                        />
-                        {hayStockInsuficiente && !isCheckingStock && (
-                            <div className="mt-2 flex items-start gap-2 bg-amber-50 border border-amber-300 rounded-xl px-3 py-2.5 text-amber-800 text-xs font-semibold">
-                                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
-                                <span>
-                                    Stock insuficiente en la bodega seleccionada para cubrir{' '}
-                                    {itemsConStockInsuficiente.length === 1
-                                        ? `"${itemsConStockInsuficiente[0].inventario?.modelo ?? 'un ítem'}"`
-                                        : `${itemsConStockInsuficiente.length} ítems`}.
-                                    Cambia la bodega de origen o desactiva los ítems sin stock.
-                                </span>
-                            </div>
-                        )}
-                    </div>
-
+                    {/* ── Comentario ── */}
                     <div>
                         <label className="block text-xs font-black text-slate-700 uppercase tracking-widest mb-2">
                             Comentario de Entrega <span className="text-slate-400 font-medium normal-case tracking-normal">(opcional)</span>
                         </label>
                         <textarea value={comentario} onChange={e => setComentario(e.target.value)}
-                            placeholder="Ej: Se entrega displayport alternativo de 1.4 compatible…"
-                            rows={3} className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none" />
+                            placeholder="Ej: Botonera desde Bodega 123, Impresora desde Bodega 132…"
+                            rows={2} className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all resize-none" />
                     </div>
 
                     {/* ── Firma del Técnico ── */}
@@ -434,7 +520,7 @@ function ModalAprobar({
                                 Borrar
                             </button>
                         </div>
-                        <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl overflow-hidden touch-none relative" style={{ height: 140 }}>
+                        <div className="bg-white border-2 border-dashed border-slate-300 rounded-xl overflow-hidden touch-none relative" style={{ height: 130 }}>
                             <SignatureCanvas
                                 ref={sigRef}
                                 penColor="black"
@@ -463,19 +549,20 @@ function ModalAprobar({
                     </button>
                     <button
                         onClick={handleConfirm}
-                        disabled={isPending || isCheckingStock || !bodegaId || aprobadosCount === 0 || isFirmaVacia || hayStockInsuficiente}
+                        disabled={isPending || isGloballyChecking || aprobadosCount === 0 || isFirmaVacia || hayStockInsuficiente}
                         className={`flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-black rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-40 disabled:shadow-none ${
                             hayStockInsuficiente
                                 ? 'bg-amber-500 text-white hover:bg-amber-600'
                                 : 'bg-emerald-600 text-white hover:bg-emerald-700'
                         }`}>
-                        {isPending || isCheckingStock
+                        {isPending || isGloballyChecking
                             ? <Loader2 className="w-4 h-4 animate-spin" />
                             : hayStockInsuficiente
                                 ? <AlertTriangle className="w-4 h-4" />
                                 : <CheckCircle2 className="w-4 h-4" />}
                         {isPending ? 'Procesando…' :
-                         isCheckingStock ? 'Verificando stock…' :
+                         isAutoAsignando ? 'Asignando bodegas…' :
+                         isGloballyChecking ? 'Verificando stock…' :
                          hayStockInsuficiente ? 'Stock insuficiente' :
                          esAprobacionParcial ? `Aprobar ${aprobadosCount} ítem${aprobadosCount !== 1 ? 's' : ''}` :
                          'Aprobar Todo'}

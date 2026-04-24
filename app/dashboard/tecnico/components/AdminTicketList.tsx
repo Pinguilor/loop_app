@@ -161,8 +161,8 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                 <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50/50">
                         <tr>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ID / Fecha</th>
-                            <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuario</th>
+                            <th scope="col" className="pl-6 pr-3 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">ID / Fecha</th>
+                            <th scope="col" className="pl-3 pr-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Usuario</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Asunto</th>
                             <th scope="col" className="px-6 py-4 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Prioridad</th>
@@ -186,7 +186,7 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                                     onClick={() => router.push(`/dashboard/ticket/${ticket.id}`)}
                                     className="hover:bg-gray-50 transition-colors cursor-pointer group"
                                 >
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                    <td className="pl-6 pr-3 py-4 whitespace-nowrap">
                                         <div className="flex flex-col">
                                             <div className="text-xs font-bold tracking-wider mb-1">
                                                 <span className="inline-flex items-center px-3 py-1 rounded-full bg-slate-700 text-white text-xs font-semibold tracking-wide shadow-sm">
@@ -209,13 +209,13 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                                         </div>
                                     </td>
 
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <div className="flex items-center">
-                                            <div className="h-8 w-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs ring-2 ring-white">
+                                    <td className="pl-3 pr-6 py-4 whitespace-nowrap">
+                                        <div className="flex items-center min-w-0">
+                                            <div className="h-8 w-8 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold text-xs ring-2 ring-white shrink-0">
                                                 {ticket.profiles?.full_name?.charAt(0).toUpperCase() || 'U'}
                                             </div>
-                                            <div className="ml-3">
-                                                <div className="text-sm font-medium text-gray-900">
+                                            <div className="ml-3 min-w-0">
+                                                <div className="text-sm font-medium text-gray-900 truncate max-w-[180px]" title={ticket.profiles?.full_name || 'Desconocido'}>
                                                     {ticket.profiles?.full_name || 'Desconocido'}
                                                 </div>
                                             </div>

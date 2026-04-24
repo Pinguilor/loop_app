@@ -764,7 +764,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                         </div>
 
                                         {/* Tarjeta */}
-                                        <div className={`flex-1 relative shadow-sm ${
+                                        <div className={`flex-1 min-w-0 relative shadow-sm ${
                                             msg.es_interno
                                                 ? 'bg-amber-50 border border-amber-100 border-l-[4px] border-l-amber-500 rounded-r-xl rounded-tl-xl rounded-bl-none p-4 sm:p-5'
                                                 : 'bg-white border border-gray-200 rounded-xl p-4 sm:p-5'
@@ -795,7 +795,7 @@ export default function TicketTimeline({ ticket, messages, currentUserId, isAgen
                                             </div>
 
                                             {/* Contenido */}
-                                            <div className="prose prose-sm max-w-none text-slate-800 max-h-[350px] overflow-y-auto pb-2 custom-scrollbar" dangerouslySetInnerHTML={{ __html: msg.mensaje }} />
+                                            <div className="prose prose-sm max-w-none text-slate-800 max-h-[350px] overflow-x-hidden overflow-y-auto pb-2 custom-scrollbar break-words [&_*]:break-words [&_*]:max-w-full" dangerouslySetInnerHTML={{ __html: msg.mensaje }} />
 
                                             {/* Adjuntos */}
                                             {msg.adjuntos && msg.adjuntos.length > 0 && (

@@ -421,7 +421,7 @@ export function ConsumoMaterialesClient({ rows, tecnicos, locales, esCliente = f
                     icon={<Package2 className="w-5 h-5 text-indigo-600" />}
                     label="Total Materiales (Mes)"
                     value={kpis.totalMateriales.toLocaleString('es-CL')}
-                    sub="Unidades despachadas este mes"
+                    sub="Unidades instaladas en terreno este mes"
                     color="bg-indigo-50"
                 />
                 <KpiCard
@@ -643,7 +643,7 @@ export function ConsumoMaterialesClient({ rows, tecnicos, locales, esCliente = f
 
                                         return (
                                             <tr
-                                                key={`${row.solicitudId}-${idx}`}
+                                                key={`${row.inventarioId}-${idx}`}
                                                 className={`border-b border-slate-50 last:border-0 hover:bg-indigo-50/40 transition-colors ${rowBg}`}
                                             >
                                                 {/* N° NC */}

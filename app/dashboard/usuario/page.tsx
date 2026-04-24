@@ -3,9 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { DashboardKPIs } from './components/DashboardAnalytics';
 import Link from 'next/link';
-
-// We need an intermediate client component to handle the Modal state for the New Ticket Form
 import TicketDashboardLayout from './components/TicketDashboardLayout';
+import { TicketsRealtimeListener } from '../components/TicketsRealtimeListener';
 
 export default async function usuarioDashboard() {
     const supabase = await createClient();
@@ -33,6 +32,8 @@ export default async function usuarioDashboard() {
     const firstName = profile?.full_name?.split(' ')[0] ?? 'Usuario';
 
     return (
+        <>
+        <TicketsRealtimeListener />
         <TicketDashboardLayout
             greeting={
                 <div className="px-4 sm:px-0">
@@ -45,5 +46,6 @@ export default async function usuarioDashboard() {
             kpis={<DashboardKPIs tickets={tickets || []} />}
             dataTable={<TicketList />}
         />
+        </>
     );
 }

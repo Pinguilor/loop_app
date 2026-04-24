@@ -35,7 +35,7 @@ export default async function TrazabilidadMaterialesPage() {
     //   profiles.cliente_id  (empresa del usuario logueado)
     //     → profiles.id      (todos los usuarios de la misma empresa)
     //       → tickets.creado_por
-    //         → solicitudes_materiales.ticket_id
+    //         → inventario.ticket_id
     //
     // Este es el mismo patrón que usa TicketList.tsx (scope 'equipo').
     // NOTA: restaurantes NO tiene columna cliente_id → no usar ese camino.
@@ -84,26 +84,30 @@ export default async function TrazabilidadMaterialesPage() {
     const supabaseAdmin = createAdminClient();
 
     try {
+        // ── Fuente: inventario en estado Operativo vinculado a un ticket ─────────
+        // Operativo + ticket_id != null = material instalado en terreno via Acta de Cierre.
         let query = supabaseAdmin
-            .from('solicitudes_materiales')
+            .from('inventario')
             .select(`
                 id,
-                estado,
-                creado_en,
-                tecnico:tecnico_id ( full_name ),
-                ticket:ticket_id ( id, numero_ticket, titulo, estado, restaurantes ( sigla ) ),
-                solicitud_items (
+                modelo,
+                familia,
+                cantidad,
+                ticket:ticket_id (
                     id,
-                    cantidad,
-                    inventario:inventario_id (
-                        id, modelo, familia, numero_serie, es_serializado
-                    )
+                    numero_ticket,
+                    titulo,
+                    estado,
+                    fecha_resolucion,
+                    agente:agente_asignado_id ( full_name ),
+                    restaurantes ( sigla )
                 )
             `)
-            .order('creado_en', { ascending: false })
+            .eq('estado', 'Operativo')
+            .not('ticket_id', 'is', null)
             .limit(2000);
 
-        // Filtro estricto: clientes solo ven solicitudes de sus tickets
+        // Filtro estricto: clientes solo ven inventario de sus tickets
         if (esCliente && clienteTicketIds !== null) {
             query = query.in('ticket_id', clienteTicketIds);
         }
@@ -122,24 +126,22 @@ export default async function TrazabilidadMaterialesPage() {
         }
 
         const rows: ConsumoRow[] = [];
-        for (const sol of (rawData ?? []) as any[]) {
-            for (const item of sol.solicitud_items ?? []) {
-                rows.push({
-                    solicitudId: sol.id,
-                    nc: sol.ticket?.numero_ticket ? String(sol.ticket.numero_ticket) : '—',
-                    ticketId: sol.ticket?.id ?? null,
-                    local: sol.ticket?.restaurantes?.sigla ?? sol.ticket?.titulo ?? '—',
-                    localSigla: sol.ticket?.restaurantes?.sigla ?? '—',
-                    localTitulo: sol.ticket?.titulo ?? '—',
-                    fecha: sol.creado_en,
-                    tecnico: sol.tecnico?.full_name ?? '—',
-                    modelo: item.inventario?.modelo ?? '—',
-                    familia: item.inventario?.familia ?? '—',
-                    cantidad: item.cantidad ?? 1,
-                    estadoSolicitud: sol.estado ?? '—',
-                    estadoTicket: sol.ticket?.estado ?? '—',
-                });
-            }
+        for (const item of (rawData ?? []) as any[]) {
+            const ticket = item.ticket;
+            rows.push({
+                inventarioId: item.id,
+                nc: ticket?.numero_ticket ? String(ticket.numero_ticket) : '—',
+                ticketId: ticket?.id ?? null,
+                local: ticket?.restaurantes?.sigla ?? ticket?.titulo ?? '—',
+                localSigla: ticket?.restaurantes?.sigla ?? '—',
+                localTitulo: ticket?.titulo ?? '—',
+                fecha: ticket?.fecha_resolucion ?? ticket?.fecha_creacion ?? '',
+                tecnico: ticket?.agente?.full_name ?? '—',
+                modelo: item.modelo ?? '—',
+                familia: item.familia ?? '—',
+                cantidad: item.cantidad ?? 1,
+                estadoTicket: ticket?.estado ?? '—',
+            });
         }
 
         const tecnicos = [...new Set(rows.map(r => r.tecnico).filter(t => t !== '—'))].sort();

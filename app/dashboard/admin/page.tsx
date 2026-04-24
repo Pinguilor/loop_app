@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { AdminTicketList } from '../tecnico/components/AdminTicketList';
+import { TicketsRealtimeListener } from '../components/TicketsRealtimeListener';
 
 export default async function AdminDashboard() {
     const supabase = await createClient();
@@ -46,6 +47,7 @@ export default async function AdminDashboard() {
                 </h1>
             </div>
             <div className="w-full">
+                <TicketsRealtimeListener />
                 <AdminTicketList initialTickets={tickets || []} currentAgentId={user.id} />
             </div>
         </div>

@@ -40,6 +40,7 @@ export async function sendTicketResolvedEmail(
     pdfBuffer?: Buffer,
     clientName?: string,
     localName?: string,
+    ccEmail?: string,
 ) {
     if (!recipientEmail) return { success: false, error: 'Sin destinatario' };
 
@@ -52,6 +53,7 @@ export async function sendTicketResolvedEmail(
         const payload: Parameters<typeof resend.emails.send>[0] = {
             from: `Systel Helpdesk <${fromEmail}>`,
             to: [recipientEmail],
+            ...(ccEmail && { cc: [ccEmail] }),
             subject: `[Cerrado] Acta de Resolución - NC-${ticketNumber}: ${title}`,
             html: `<!DOCTYPE html>
 <html lang="es">

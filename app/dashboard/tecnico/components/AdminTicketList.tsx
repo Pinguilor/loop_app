@@ -37,19 +37,28 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
             return true;
         });
 
-        // 2. Filter by Search Term
+        // 2. Filter by Search Term — solo campos visibles/semánticos, sin UUIDs ni relaciones de empresa
         if (searchTerm.trim()) {
             const lowerSearch = searchTerm.toLowerCase();
-            filtered = filtered.filter(ticket => {
-                const matchId = ticket.id.toLowerCase().includes(lowerSearch) || `nc-${ticket.numero_ticket}`.includes(lowerSearch) || String(ticket.numero_ticket).includes(lowerSearch);
-                const matchTitle = (ticket.titulo || '').toLowerCase().includes(lowerSearch);
-                const matchDesc = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
-                const matchName = (ticket.profiles?.full_name || '').toLowerCase().includes(lowerSearch);
+
+            const matchesSearch = (ticket: (typeof initialTickets)[0]) => {
+                const matchId         = `nc-${ticket.numero_ticket}`.includes(lowerSearch) || String(ticket.numero_ticket).includes(lowerSearch);
+                const matchTitle      = (ticket.titulo || '').toLowerCase().includes(lowerSearch);
+                const matchDesc       = (ticket.descripcion || '').toLowerCase().includes(lowerSearch);
                 const matchRestaurante = (ticket.restaurantes?.nombre_restaurante || '').toLowerCase().includes(lowerSearch);
-                const matchSigla = ((ticket.restaurantes as any)?.sigla || '').toLowerCase().includes(lowerSearch);
-                const matchCliente = ((ticket.profiles as any)?.clientes?.nombre_fantasia || '').toLowerCase().includes(lowerSearch);
-                return matchId || matchTitle || matchDesc || matchName || matchRestaurante || matchSigla || matchCliente;
-            });
+                const matchSigla      = ((ticket.restaurantes as any)?.sigla || '').toLowerCase().includes(lowerSearch);
+                return matchId || matchTitle || matchDesc || matchRestaurante || matchSigla;
+            };
+
+            filtered = filtered.filter(matchesSearch);
+
+            // Priorizar coincidencia exacta de sigla (ej. "KNN" sube al tope)
+            const exactSiglaMatch = (t: (typeof initialTickets)[0]) =>
+                ((t.restaurantes as any)?.sigla || '').toLowerCase() === lowerSearch;
+            filtered = [
+                ...filtered.filter(exactSiglaMatch),
+                ...filtered.filter(t => !exactSiglaMatch(t)),
+            ];
         }
 
         return filtered;
@@ -120,7 +129,7 @@ export function AdminTicketList({ initialTickets, currentAgentId, agentName }: P
                         </div>
                         <input
                             type="text"
-                            placeholder="Buscar por ID (NC-XX), título o nombre..."
+                            placeholder="Buscar por ID (NC-XX), título, descripción o restaurante..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2.5 sm:py-2 border border-slate-300 rounded-xl leading-5 bg-slate-50 placeholder-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-brand-primary focus:border-brand-primary text-[15px] sm:text-sm transition-all shadow-sm"

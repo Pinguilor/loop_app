@@ -1045,26 +1045,44 @@ export async function closeTicketWithActaAction(
         }
 
         // 5. Enviar email con adjunto (independiente — fallo no afecta el cierre)
-        // Reutilizamos ticketFull (ya cargado en el paso 4); si falló, hacemos fetch mínimo
+        // Extendemos el fetch para incluir correo del restaurante
         const emailTicket = ticketFull ?? (await supabase
             .from('tickets')
-            .select('numero_ticket, titulo, restaurantes(razon_social, nombre_restaurante)')
+            .select('numero_ticket, titulo, restaurantes(razon_social, nombre_restaurante, correo)')
             .eq('id', ticketId)
             .single()
         ).data;
         if (emailTicket) {
-            const adminEmail = process.env.ADMIN_EMAIL || 'no-reply@systelltda-helpdesk.cl';
-            const clientName = (emailTicket.restaurantes as any)?.razon_social ?? undefined;
-            const localName  = (emailTicket.restaurantes as any)?.nombre_restaurante ?? undefined;
-            sendTicketResolvedEmail(
-                ticketId,
-                emailTicket.numero_ticket,
-                emailTicket.titulo,
-                adminEmail,
-                pdfBuffer,
-                clientName,
-                localName,
-            ).catch(err => console.error('Fallo disparando email de resolución:', err));
+            // Obtener email real del creador desde auth.users
+            let creadorEmail: string | undefined;
+            try {
+                const { createAdminClient } = await import('@/lib/supabase/admin');
+                const adminClient = createAdminClient();
+                const { data: authUser } = await adminClient.auth.admin.getUserById(updatedTicket.creado_por);
+                creadorEmail = authUser?.user?.email ?? undefined;
+            } catch (e) {
+                console.warn('[closeTicketWithActaAction] No se pudo obtener email del creador:', e);
+            }
+
+            const restaurante   = emailTicket.restaurantes as any;
+            const clientName    = restaurante?.razon_social ?? undefined;
+            const localName     = restaurante?.nombre_restaurante ?? undefined;
+            const restauranteCC = restaurante?.correo ?? undefined;
+
+            if (creadorEmail) {
+                sendTicketResolvedEmail(
+                    ticketId,
+                    emailTicket.numero_ticket,
+                    emailTicket.titulo,
+                    creadorEmail,
+                    pdfBuffer,
+                    clientName,
+                    localName,
+                    restauranteCC,
+                ).catch(err => console.error('Fallo disparando email de resolución:', err));
+            } else {
+                console.warn(`[closeTicketWithActaAction] Sin email para el creador del ticket ${ticketId} — correo de cierre omitido.`);
+            }
         }
 
         // 6. Revalidación
